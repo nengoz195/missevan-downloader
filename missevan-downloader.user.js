@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         Missevan LRC/JSON/Audio/Image Subtitle Downloader (Auto Detect + Optional Audio ZIP)
-// @namespace    http://tampermonkey.net/
+// @namespace    https://github.com/nengoz195
 // @version      1.8 // Tăng version để dễ quản lý
 // @description  Tự động tải phụ đề Missevan (.lrc và .json), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers).
 // @author       Thien Truong Dia Cuu
