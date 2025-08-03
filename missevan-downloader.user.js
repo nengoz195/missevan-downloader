@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      2.2 // Tăng version để đánh dấu phiên bản tự động SRT
 // @description  Tự động tải phụ đề Missevan (.lrc và .json), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Tự động chuyển JSON sang SRT khi tải phụ đề JSON. Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers).
-// @author       Thien Truong Dia Cuu (Gộp bởi ChatGPT)
+// @author       Thien Truong Dia Cuu
 // @match        *://www.missevan.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
