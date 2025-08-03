@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Missevan LRC/JSON/Audio/Image Subtitle Downloader (Auto Detect + Optional Audio ZIP)
+// @name         Missevan Downloader with SRT Converter (Auto SRT)
 // @namespace    http://tampermonkey.net/
-// @version      1.9 // Tăng version để dễ quản lý
-// @description  Tự động tải phụ đề Missevan (.lrc và .json), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers).
-// @author       Thien Truong Dia Cuu
+// @version      2.2 // Tăng version để đánh dấu phiên bản tự động SRT
+// @description  Tự động tải phụ đề Missevan (.lrc và .json), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Tự động chuyển JSON sang SRT khi tải phụ đề JSON. Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers).
+// @author       Thien Truong Dia Cuu (Gộp bởi ChatGPT)
 // @match        *://www.missevan.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
@@ -205,6 +205,52 @@
         return ''; // Default empty if no extension found
     }
 
+    /**
+     * Chuyển đổi dữ liệu JSON phụ đề sang định dạng SRT.
+     * @param {Array<Object>} jsonData - Mảng các đối tượng phụ đề JSON.
+     * @returns {string} Chuỗi SRT đã định dạng.
+     */
+    function convertJsonToSrt(jsonData) {
+        const subtitles = [];
+        let srtIndex = 1;
+
+        const formatTime = ms => {
+            const date = new Date(ms);
+            const hh = String(date.getUTCHours()).padStart(2, '0');
+            const mm = String(date.getUTCMinutes()).padStart(2, '0');
+            const ss = String(date.getUTCSeconds()).padStart(2, '0');
+            const msPart = String(date.getUTCMilliseconds()).padStart(3, '0');
+            return `${hh}:${mm}:${ss},${msPart}`;
+        };
+
+        jsonData.forEach(entry => {
+            const startMs = entry.start_time || 0;
+            const endMs = entry.end_time || 0;
+            const role = entry.role || '';
+            let content = entry.content || '';
+            const color = entry.color ?? 16777215; // Mặc định trắng
+            const italic = entry.italic || false;
+            const underline = entry.underline || false;
+
+            let line = role ? `${role}: ${content}` : content;
+
+            // Áp dụng định dạng HTML cho SRT
+            if (color !== 16777215) {
+                const hex = `#${color.toString(16).padStart(6, '0')}`;
+                line = `<font color="${hex}">${line}</font>`;
+            }
+            if (italic) line = `<i>${line}</i>`;
+            if (underline) line = `<u>${line}</u>`;
+
+            const start = formatTime(startMs);
+            const end = formatTime(endMs);
+
+            subtitles.push(`${srtIndex++}\n${start} --> ${end}\n${line}\n`);
+        });
+
+        return subtitles.join('\n');
+    }
+
     async function processDramaId(dramaId, type = 'lrc') {
         log(`📥 Đang xử lý drama ID: ${dramaId} (Loại: ${type.toUpperCase()})`);
         const { name: dramaName, ids, imageUrl: dramaCoverUrl } = await getDramaDetails(dramaId);
@@ -214,6 +260,8 @@
         }
 
         const shouldZipAudio = document.getElementById('zipAudioCheckbox')?.checked ?? false;
+        const convertJsonToSrtCheckbox = document.getElementById('convertJsonToSrtCheckbox')?.checked ?? false;
+        log(`Trạng thái 'Chuyển JSON sang SRT': ${convertJsonToSrtCheckbox ? 'ĐÃ TÍCH' : 'CHƯA TÍCH'}`); // Debug log
 
         const zip = new JSZip();
         let filesAdded = 0;
@@ -297,10 +345,18 @@
                 if (subtitleUrl) {
                     try {
                         const jsonData = await fetchData(subtitleUrl, 'json');
-                        zip.file(`${title}.json`, JSON.stringify(jsonData, null, 2));
-                        filesAdded++;
+                        if (convertJsonToSrtCheckbox) {
+                            const srtData = convertJsonToSrt(jsonData);
+                            zip.file(`${title}.srt`, srtData);
+                            filesAdded++;
+                            log(`✅ Sound ID ${id}: Đã chuyển đổi và thêm ${title}.srt vào ZIP.`);
+                        } else {
+                            zip.file(`${title}.json`, JSON.stringify(jsonData, null, 2));
+                            filesAdded++;
+                            log(`✅ Sound ID ${id}: Đã thêm ${title}.json vào ZIP.`);
+                        }
                     } catch (error) {
-                        log(`❌ Sound ID ${id}: Lỗi tải JSON từ URL ${subtitleUrl}: ${error}`);
+                        log(`❌ Sound ID ${id}: Lỗi tải/chuyển đổi JSON từ URL ${subtitleUrl}: ${error}`);
                     }
                 } else {
                     log(`⚠️ Sound ID ${id}: Không có URL phụ đề JSON.`);
@@ -354,7 +410,7 @@
         }
 
         log(`📦 Đang tạo file ZIP (${filesAdded} files)...`);
-        const zipFileName = `${dramaName}_${type}.zip`;
+        const zipFileName = `${dramaName}_${type}${convertJsonToSrtCheckbox && type === 'json' ? '_srt' : ''}.zip`;
         const blob = await zip.generateAsync({ type: "blob" });
         GM_download({
             url: URL.createObjectURL(blob),
@@ -370,6 +426,9 @@
 
         const soundInfo = await getSoundInfo(soundId);
         const name = soundInfo.name;
+        const convertJsonToSrtCheckbox = document.getElementById('convertJsonToSrtCheckbox')?.checked ?? false;
+        log(`Trạng thái 'Chuyển JSON sang SRT': ${convertJsonToSrtCheckbox ? 'ĐÃ TÍCH' : 'CHƯA TÍCH'}`); // Debug log
+
 
         if (type === 'lrc') {
             const data = await parseDanmaku(soundId);
@@ -392,15 +451,27 @@
             }
             try {
                 const jsonData = await fetchData(subtitleUrl, 'json');
-                const jsonString = JSON.stringify(jsonData, null, 2);
-                const blob = new Blob([jsonString], { type: "application/json" });
-                GM_download({
-                    url: URL.createObjectURL(blob),
-                    name: `${name}.json`,
-                    saveAs: false,
-                    onload: () => log(`✅ Đã tải ${name}.json`),
-                    onerror: e => log(`❌ Lỗi tải JSON: ${e.error || e.message || e}`)
-                });
+                if (convertJsonToSrtCheckbox) {
+                    const srtData = convertJsonToSrt(jsonData);
+                    const blob = new Blob([srtData], { type: "text/plain" });
+                    GM_download({
+                        url: URL.createObjectURL(blob),
+                        name: `${name}.srt`,
+                        saveAs: false,
+                        onload: () => log(`✅ Đã tải ${name}.srt (đã chuyển từ JSON)`),
+                        onerror: e => log(`❌ Lỗi tải SRT (từ JSON): ${e.error || e.message || e}`)
+                    });
+                } else {
+                    const jsonString = JSON.stringify(jsonData, null, 2);
+                    const blob = new Blob([jsonString], { type: "application/json" });
+                    GM_download({
+                        url: URL.createObjectURL(blob),
+                        name: `${name}.json`,
+                        saveAs: false,
+                        onload: () => log(`✅ Đã tải ${name}.json`),
+                        onerror: e => log(`❌ Lỗi tải JSON: ${e.error || e.message || e}`)
+                    });
+                }
             } catch (error) {
                 log(`❌ Lỗi tải hoặc phân tích JSON: ${error}`);
             }
@@ -499,7 +570,6 @@
 
         const box = document.createElement("div");
         box.id = "missevanSubtitleTool";
-        // --- ĐIỀU CHỈNH KÍCH THƯỚC VÀ KIỂU DÁNG GIAO DIỆN Ở ĐÂY ---
         box.style = `
             position: fixed;
             top: 10px;
@@ -518,16 +588,15 @@
             gap: 10px;
             max-height: 95vh;
             overflow-y: auto;
-            resize: both; /* Cho phép người dùng resize */
+            resize: both;
             min-width: 250px;
             min-height: 200px;
         `;
-        // Lấy trạng thái hiển thị từ localStorage
         const uiState = localStorage.getItem(UI_STATE_KEY);
         let isUIHidden = false;
         if (uiState === 'hidden') {
             isUIHidden = true;
-            box.style.width = 'fit-content'; // Thu gọn khi ẩn
+            box.style.width = 'fit-content';
             box.style.height = 'fit-content';
             box.style.overflow = 'hidden';
             box.style.padding = '5px';
@@ -539,7 +608,7 @@
                     🎧 Missevan Downloader
                 </h3>
                 <button id="toggleUIBtn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #555; padding: 0 5px;">
-                    ${isUIHidden ? '▲' : '▼'} <!-- Biểu tượng mũi tên lên/xuống -->
+                    ${isUIHidden ? '&#x25B2;' : '&#x25BC;'}
                 </button>
             </div>
 
@@ -552,12 +621,16 @@
                     <p style="font-size: 10px; color: #777; margin: 3px 0 0 20px;">
                         (Bỏ chọn để tải từng file audio cho Drama)
                     </p>
+                    <input type="checkbox" id="convertJsonToSrtCheckbox" checked style="margin-right: 5px; transform: scale(1.1); margin-top: 8px;">
+                    <label for="convertJsonToSrtCheckbox" style="font-size: 12px; color: #555; cursor: pointer;">
+                        Chuyển JSON Subtitle sang SRT?
+                    </label>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 7px;">
                     <strong style="color: #4CAF50;">Tải TOÀN BỘ Drama (ZIP):</strong>
                     <button id="downloadDramaLrcBtn" class="btn drama-btn green">📥 Drama (LRC)</button>
-                    <button id="downloadDramaJsonBtn" class="btn drama-btn blue">📥 Drama (JSON)</button>
+                    <button id="downloadDramaJsonBtn" class="btn drama-btn blue">📥 Drama (JSON / SRT)</button>
                     <button id="downloadDramaAudioBtn" class="btn drama-btn orange">📥 Drama (AUDIO)</button>
                     <button id="downloadDramaImageBtn" class="btn drama-btn light-green">📸 Drama bìa (Ảnh)</button>
                     <button id="downloadDramaAllImagesBtn" class="btn drama-btn gray">🖼️ Drama tất cả ảnh</button>
@@ -566,7 +639,7 @@
                 <div style="display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #eee; padding-top: 10px;">
                     <strong style="color: #FFC107;">Tải TỪNG Tập (Sound ID):</strong>
                     <button id="downloadSoundLrcBtn" class="btn sound-btn yellow">🎵 Tập (LRC)</button>
-                    <button id="downloadSoundJsonBtn" class="btn sound-btn purple">🎵 Tập (JSON)</button>
+                    <button id="downloadSoundJsonBtn" class="btn sound-btn purple">🎵 Tập (JSON / SRT)</button>
                     <button id="downloadSoundAudioBtn" class="btn sound-btn dark-blue">🎵 Tập (AUDIO)</button>
                     <button id="downloadSoundImageBtn" class="btn sound-btn cyan">📸 Tập bìa (Ảnh)</button>
                     <button id="downloadSoundAllImagesBtn" class="btn sound-btn teal">🖼️ Tập tất cả ảnh</button>
@@ -582,7 +655,6 @@
         `;
         document.body.appendChild(box);
 
-        // Add CSS for buttons
         const style = document.createElement('style');
         style.innerHTML = `
             #missevanSubtitleTool .btn {
@@ -638,7 +710,6 @@
             log("⚠️ Không tìm thấy Drama ID hoặc Sound ID trên trang này. Vui lòng truy cập trang drama hoặc tập.");
         }
 
-        // Event listener for toggling UI visibility
         const toggleUIBtn = document.getElementById('toggleUIBtn');
         const uiContent = document.getElementById('uiContent');
         const missevanSubtitleTool = document.getElementById('missevanSubtitleTool');
@@ -647,18 +718,18 @@
             const isHidden = uiContent.style.display === 'none';
             if (isHidden) {
                 uiContent.style.display = 'flex';
-                toggleUIBtn.innerHTML = '▼'; // Mũi tên xuống
-                missevanSubtitleTool.style.width = '280px'; // Khôi phục chiều rộng mặc định
-                missevanSubtitleTool.style.height = 'fit-content'; // Khôi phục chiều cao tự động
-                missevanSubtitleTool.style.overflow = 'auto'; // Cho phép cuộn lại
+                toggleUIBtn.innerHTML = '&#x25BC;';
+                missevanSubtitleTool.style.width = '280px';
+                missevanSubtitleTool.style.height = 'fit-content';
+                missevanSubtitleTool.style.overflow = 'auto';
                 missevanSubtitleTool.style.padding = '10px';
                 localStorage.setItem(UI_STATE_KEY, 'visible');
             } else {
                 uiContent.style.display = 'none';
-                toggleUIBtn.innerHTML = '▲'; // Mũi tên lên
-                missevanSubtitleTool.style.width = 'fit-content'; // Thu gọn
+                toggleUIBtn.innerHTML = '&#x25B2;';
+                missevanSubtitleTool.style.width = 'fit-content';
                 missevanSubtitleTool.style.height = 'fit-content';
-                missevanSubtitleTool.style.overflow = 'hidden'; // Ẩn thanh cuộn
+                missevanSubtitleTool.style.overflow = 'hidden';
                 missevanSubtitleTool.style.padding = '5px';
                 localStorage.setItem(UI_STATE_KEY, 'hidden');
             }
