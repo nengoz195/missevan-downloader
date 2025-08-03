@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Missevan LRC/JSON/Audio/Image Subtitle Downloader (Auto Detect + Optional Audio ZIP)
-// @namespace    https://github.com/nengoz195
-// @version      1.8 // Tăng version để dễ quản lý
+// @namespace    http://tampermonkey.net/
+// @version      1.9 // Tăng version để dễ quản lý
 // @description  Tự động tải phụ đề Missevan (.lrc và .json), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers).
 // @author       Thien Truong Dia Cuu
 // @match        *://www.missevan.com/*
@@ -18,6 +18,8 @@
     const SOUND_GET_URL = "https://www.missevan.com/sound/getsound";
     const DANMAKU_GET_URL = "https://www.missevan.com/sound/getdm";
     const SOUND_IMAGES_URL = "https://www.missevan.com/sound/getimages";
+
+    const UI_STATE_KEY = 'missevanDownloaderUIState'; // Key for localStorage
 
     function getURLParam(key) {
         const url = new URL(window.location.href);
@@ -508,52 +510,73 @@
             z-index: 10000;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-size: 13px;
-            width: 280px; /* Tăng chiều rộng để các nút không bị ép */
+            width: 280px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.15);
             border-radius: 8px;
             display: flex;
             flex-direction: column;
             gap: 10px;
-            max-height: 95vh; /* Giới hạn chiều cao */
-            overflow-y: auto; /* Cho phép cuộn nếu nội dung dài */
+            max-height: 95vh;
+            overflow-y: auto;
+            resize: both; /* Cho phép người dùng resize */
+            min-width: 250px;
+            min-height: 200px;
         `;
+        // Lấy trạng thái hiển thị từ localStorage
+        const uiState = localStorage.getItem(UI_STATE_KEY);
+        let isUIHidden = false;
+        if (uiState === 'hidden') {
+            isUIHidden = true;
+            box.style.width = 'fit-content'; // Thu gọn khi ẩn
+            box.style.height = 'fit-content';
+            box.style.overflow = 'hidden';
+            box.style.padding = '5px';
+        }
+
         box.innerHTML = `
-            <h3 style="margin: 0; text-align: center; color: #333; font-size: 16px; border-bottom: 1px solid #eee; padding-bottom: 8px;">
-                🎧 Missevan Downloader
-            </h3>
-
-            <div style="padding: 5px 0; border-bottom: 1px solid #eee;">
-                <input type="checkbox" id="zipAudioCheckbox" style="margin-right: 5px; transform: scale(1.1);">
-                <label for="zipAudioCheckbox" style="font-size: 12px; color: #555; cursor: pointer;">
-                    Nén Audio Drama vào ZIP?
-                </label>
-                <p style="font-size: 10px; color: #777; margin: 3px 0 0 20px;">
-                    (Bỏ chọn để tải từng file audio cho Drama)
-                </p>
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 5px;">
+                <h3 style="margin: 0; text-align: left; color: #333; font-size: 16px;">
+                    🎧 Missevan Downloader
+                </h3>
+                <button id="toggleUIBtn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #555; padding: 0 5px;">
+                    ${isUIHidden ? '▲' : '▼'} <!-- Biểu tượng mũi tên lên/xuống -->
+                </button>
             </div>
 
-            <div style="display: flex; flex-direction: column; gap: 7px;">
-                <strong style="color: #4CAF50;">Tải TOÀN BỘ Drama (ZIP):</strong>
-                <button id="downloadDramaLrcBtn" class="btn drama-btn green">📥 Drama (LRC)</button>
-                <button id="downloadDramaJsonBtn" class="btn drama-btn blue">📥 Drama (JSON)</button>
-                <button id="downloadDramaAudioBtn" class="btn drama-btn orange">📥 Drama (AUDIO)</button>
-                <button id="downloadDramaImageBtn" class="btn drama-btn light-green">📸 Drama bìa (Ảnh)</button>
-                <button id="downloadDramaAllImagesBtn" class="btn drama-btn gray">🖼️ Drama tất cả ảnh</button>
-            </div>
+            <div id="uiContent" style="display: ${isUIHidden ? 'none' : 'flex'}; flex-direction: column; gap: 10px;">
+                <div style="padding: 5px 0; border-bottom: 1px solid #eee;">
+                    <input type="checkbox" id="zipAudioCheckbox" style="margin-right: 5px; transform: scale(1.1);">
+                    <label for="zipAudioCheckbox" style="font-size: 12px; color: #555; cursor: pointer;">
+                        Nén Audio Drama vào ZIP?
+                    </label>
+                    <p style="font-size: 10px; color: #777; margin: 3px 0 0 20px;">
+                        (Bỏ chọn để tải từng file audio cho Drama)
+                    </p>
+                </div>
 
-            <div style="display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #eee; padding-top: 10px;">
-                <strong style="color: #FFC107;">Tải TỪNG Tập (Sound ID):</strong>
-                <button id="downloadSoundLrcBtn" class="btn sound-btn yellow">🎵 Tập (LRC)</button>
-                <button id="downloadSoundJsonBtn" class="btn sound-btn purple">🎵 Tập (JSON)</button>
-                <button id="downloadSoundAudioBtn" class="btn sound-btn dark-blue">🎵 Tập (AUDIO)</button>
-                <button id="downloadSoundImageBtn" class="btn sound-btn cyan">📸 Tập bìa (Ảnh)</button>
-                <button id="downloadSoundAllImagesBtn" class="btn sound-btn teal">🖼️ Tập tất cả ảnh</button>
-            </div>
+                <div style="display: flex; flex-direction: column; gap: 7px;">
+                    <strong style="color: #4CAF50;">Tải TOÀN BỘ Drama (ZIP):</strong>
+                    <button id="downloadDramaLrcBtn" class="btn drama-btn green">📥 Drama (LRC)</button>
+                    <button id="downloadDramaJsonBtn" class="btn drama-btn blue">📥 Drama (JSON)</button>
+                    <button id="downloadDramaAudioBtn" class="btn drama-btn orange">📥 Drama (AUDIO)</button>
+                    <button id="downloadDramaImageBtn" class="btn drama-btn light-green">📸 Drama bìa (Ảnh)</button>
+                    <button id="downloadDramaAllImagesBtn" class="btn drama-btn gray">🖼️ Drama tất cả ảnh</button>
+                </div>
 
-            <div style="border-top: 1px solid #eee; padding-top: 10px;">
-                <h4 style="margin: 0 0 5px 0; color: #333; font-size: 14px;">Log Output:</h4>
-                <div id="logOutput" style="background:#f9f9f9;border:1px solid #eee;height:120px;overflow-y:auto;padding:5px;font-size:10px;color:#444;border-radius:4px;">
-                    Sẵn sàng!
+                <div style="display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #eee; padding-top: 10px;">
+                    <strong style="color: #FFC107;">Tải TỪNG Tập (Sound ID):</strong>
+                    <button id="downloadSoundLrcBtn" class="btn sound-btn yellow">🎵 Tập (LRC)</button>
+                    <button id="downloadSoundJsonBtn" class="btn sound-btn purple">🎵 Tập (JSON)</button>
+                    <button id="downloadSoundAudioBtn" class="btn sound-btn dark-blue">🎵 Tập (AUDIO)</button>
+                    <button id="downloadSoundImageBtn" class="btn sound-btn cyan">📸 Tập bìa (Ảnh)</button>
+                    <button id="downloadSoundAllImagesBtn" class="btn sound-btn teal">🖼️ Tập tất cả ảnh</button>
+                </div>
+
+                <div style="border-top: 1px solid #eee; padding-top: 10px;">
+                    <h4 style="margin: 0 0 5px 0; color: #333; font-size: 14px;">Log Output:</h4>
+                    <div id="logOutput" style="background:#f9f9f9;border:1px solid #eee;height:120px;overflow-y:auto;padding:5px;font-size:10px;color:#444;border-radius:4px;">
+                        Sẵn sàng!
+                    </div>
                 </div>
             </div>
         `;
@@ -614,6 +637,33 @@
         if (!dramaId && !soundId) {
             log("⚠️ Không tìm thấy Drama ID hoặc Sound ID trên trang này. Vui lòng truy cập trang drama hoặc tập.");
         }
+
+        // Event listener for toggling UI visibility
+        const toggleUIBtn = document.getElementById('toggleUIBtn');
+        const uiContent = document.getElementById('uiContent');
+        const missevanSubtitleTool = document.getElementById('missevanSubtitleTool');
+
+        toggleUIBtn.addEventListener('click', () => {
+            const isHidden = uiContent.style.display === 'none';
+            if (isHidden) {
+                uiContent.style.display = 'flex';
+                toggleUIBtn.innerHTML = '▼'; // Mũi tên xuống
+                missevanSubtitleTool.style.width = '280px'; // Khôi phục chiều rộng mặc định
+                missevanSubtitleTool.style.height = 'fit-content'; // Khôi phục chiều cao tự động
+                missevanSubtitleTool.style.overflow = 'auto'; // Cho phép cuộn lại
+                missevanSubtitleTool.style.padding = '10px';
+                localStorage.setItem(UI_STATE_KEY, 'visible');
+            } else {
+                uiContent.style.display = 'none';
+                toggleUIBtn.innerHTML = '▲'; // Mũi tên lên
+                missevanSubtitleTool.style.width = 'fit-content'; // Thu gọn
+                missevanSubtitleTool.style.height = 'fit-content';
+                missevanSubtitleTool.style.overflow = 'hidden'; // Ẩn thanh cuộn
+                missevanSubtitleTool.style.padding = '5px';
+                localStorage.setItem(UI_STATE_KEY, 'hidden');
+            }
+        });
+
 
         document.getElementById('downloadDramaLrcBtn').addEventListener('click', () => {
             if (dramaId) processDramaId(dramaId, 'lrc');
