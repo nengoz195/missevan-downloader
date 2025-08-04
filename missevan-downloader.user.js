@@ -1,9 +1,9 @@
 // ==UserScript==
-// @name         Missevan Downloader with SRT Converter (Auto SRT)
+// @name         Missevan Downloader with SRT Converter (Auto SRT) - Pink Cute Kitty Edition
 // @namespace    http://tampermonkey.net/
-// @version      2.2 // Tăng version để đánh dấu phiên bản tự động SRT
-// @description  Tự động tải phụ đề Missevan (.lrc và .json), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Tự động chuyển JSON sang SRT khi tải phụ đề JSON. Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers).
-// @author       Thien Truong Dia Cuu
+// @version      2.4 // Tăng version để đánh dấu phiên bản Kitty
+// @description  Tự động tải phụ đề Missevan (.lrc và .json), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Tự động chuyển JSON sang SRT khi tải phụ đề JSON. Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers). Giao diện màu hồng dễ thương với chủ đề mèo Kitty.
+// @author       MeowMeow
 // @match        *://www.missevan.com/*
 // @grant        GM_xmlhttpRequest
 // @grant        GM_download
@@ -175,7 +175,7 @@
     }
 
     function genLRC(data, title) {
-        let out = `[ver:v1.0]\n[nickname:涛之雨]\n[ti:${title}]`;
+        let out = `[ver:v1.0]\n[nickname:MeowMeow]\n[ti:${title}]`; // Changed nickname
         let prev = "";
         for (const [, d] of data) {
             if (prev === d.stime) {
@@ -574,8 +574,8 @@
             position: fixed;
             top: 10px;
             right: 10px;
-            background: #fff;
-            border: 1px solid #ccc;
+            background: #ffe6f2; /* Light pink background */
+            border: 1px solid #ffccdd; /* Pink border */
             padding: 10px;
             z-index: 10000;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -588,7 +588,7 @@
             gap: 10px;
             max-height: 95vh;
             overflow-y: auto;
-            resize: both;
+            resize: both; /* Cho phép người dùng resize */
             min-width: 250px;
             min-height: 200px;
         `;
@@ -603,52 +603,82 @@
         }
 
         box.innerHTML = `
-            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #eee; padding-bottom: 8px; margin-bottom: 5px;">
-                <h3 style="margin: 0; text-align: left; color: #333; font-size: 16px;">
-                    🎧 Missevan Downloader
+            <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ffadd1; padding-bottom: 8px; margin-bottom: 5px;">
+                <h3 style="margin: 0; text-align: left; color: #d63384; font-size: 16px; display: flex; align-items: center;">
+                    <span style="font-size: 20px; margin-right: 5px;">😻</span> Missevan Downloader
                 </h3>
-                <button id="toggleUIBtn" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #555; padding: 0 5px;">
+                <button id="toggleUIBtn" title="Ẩn/Hiện giao diện" style="background: none; border: none; font-size: 18px; cursor: pointer; color: #d63384; padding: 0 5px; line-height: 1;">
                     ${isUIHidden ? '&#x25B2;' : '&#x25BC;'}
                 </button>
             </div>
 
             <div id="uiContent" style="display: ${isUIHidden ? 'none' : 'flex'}; flex-direction: column; gap: 10px;">
-                <div style="padding: 5px 0; border-bottom: 1px solid #eee;">
-                    <input type="checkbox" id="zipAudioCheckbox" style="margin-right: 5px; transform: scale(1.1);">
-                    <label for="zipAudioCheckbox" style="font-size: 12px; color: #555; cursor: pointer;">
-                        Nén Audio Drama vào ZIP?
-                    </label>
-                    <p style="font-size: 10px; color: #777; margin: 3px 0 0 20px;">
-                        (Bỏ chọn để tải từng file audio cho Drama)
-                    </p>
-                    <input type="checkbox" id="convertJsonToSrtCheckbox" checked style="margin-right: 5px; transform: scale(1.1); margin-top: 8px;">
-                    <label for="convertJsonToSrtCheckbox" style="font-size: 12px; color: #555; cursor: pointer;">
-                        Chuyển JSON Subtitle sang SRT?
-                    </label>
+                <div style="padding: 5px 0; border-bottom: 1px solid #ffadd1;">
+                    <div style="margin-bottom: 8px;">
+                        <input type="checkbox" id="zipAudioCheckbox" style="margin-right: 5px; transform: scale(1.1);">
+                        <label for="zipAudioCheckbox" style="font-size: 12px; color: #884a6c; cursor: pointer;">
+                            Nén Audio Drama vào ZIP?
+                        </label>
+                        <p style="font-size: 10px; color: #a1648a; margin: 3px 0 0 20px;">
+                            (Bỏ chọn để tải từng file audio cho Drama)
+                        </p>
+                    </div>
+                    <div>
+                        <input type="checkbox" id="convertJsonToSrtCheckbox" checked style="margin-right: 5px; transform: scale(1.1);">
+                        <label for="convertJsonToSrtCheckbox" style="font-size: 12px; color: #884a6c; cursor: pointer;">
+                            Chuyển JSON Subtitle sang SRT?
+                        </label>
+                    </div>
                 </div>
 
                 <div style="display: flex; flex-direction: column; gap: 7px;">
-                    <strong style="color: #4CAF50;">Tải TOÀN BỘ Drama (ZIP):</strong>
-                    <button id="downloadDramaLrcBtn" class="btn drama-btn green">📥 Drama (LRC)</button>
-                    <button id="downloadDramaJsonBtn" class="btn drama-btn blue">📥 Drama (JSON / SRT)</button>
-                    <button id="downloadDramaAudioBtn" class="btn drama-btn orange">📥 Drama (AUDIO)</button>
-                    <button id="downloadDramaImageBtn" class="btn drama-btn light-green">📸 Drama bìa (Ảnh)</button>
-                    <button id="downloadDramaAllImagesBtn" class="btn drama-btn gray">🖼️ Drama tất cả ảnh</button>
+                    <strong style="color: #c06c84; display: flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 16px;">🐾</span> Tải TOÀN BỘ Drama (ZIP):
+                    </strong>
+                    <button id="downloadDramaLrcBtn" class="btn drama-btn pink-1">
+                        <span class="icon">💬</span> Phụ đề LRC
+                    </button>
+                    <button id="downloadDramaJsonBtn" class="btn drama-btn pink-2">
+                        <span class="icon">📄</span> Phụ đề JSON / SRT
+                    </button>
+                    <button id="downloadDramaAudioBtn" class="btn drama-btn pink-3">
+                        <span class="icon">🎧</span> Toàn bộ Audio
+                    </button>
+                    <button id="downloadDramaImageBtn" class="btn drama-btn pink-4">
+                        <span class="icon">🖼️</span> Ảnh bìa Drama
+                    </button>
+                    <button id="downloadDramaAllImagesBtn" class="btn drama-btn pink-5">
+                        <span class="icon">🎀</span> Tất cả ảnh Drama
+                    </button>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #eee; padding-top: 10px;">
-                    <strong style="color: #FFC107;">Tải TỪNG Tập (Sound ID):</strong>
-                    <button id="downloadSoundLrcBtn" class="btn sound-btn yellow">🎵 Tập (LRC)</button>
-                    <button id="downloadSoundJsonBtn" class="btn sound-btn purple">🎵 Tập (JSON / SRT)</button>
-                    <button id="downloadSoundAudioBtn" class="btn sound-btn dark-blue">🎵 Tập (AUDIO)</button>
-                    <button id="downloadSoundImageBtn" class="btn sound-btn cyan">📸 Tập bìa (Ảnh)</button>
-                    <button id="downloadSoundAllImagesBtn" class="btn sound-btn teal">🖼️ Tập tất cả ảnh</button>
+                <div style="display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #ffadd1; padding-top: 10px;">
+                    <strong style="color: #a87ea8; display: flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 16px;">🐱</span> Tải TỪNG Tập (Sound ID):
+                    </strong>
+                    <button id="downloadSoundLrcBtn" class="btn sound-btn purple-1">
+                        <span class="icon">💬</span> Phụ đề LRC
+                    </button>
+                    <button id="downloadSoundJsonBtn" class="btn sound-btn purple-2">
+                        <span class="icon">📄</span> Phụ đề JSON / SRT
+                    </button>
+                    <button id="downloadSoundAudioBtn" class="btn sound-btn purple-3">
+                        <span class="icon">🔊</span> Audio tập
+                    </button>
+                    <button id="downloadSoundImageBtn" class="btn sound-btn purple-4">
+                        <span class="icon">🖼️</span> Ảnh bìa tập
+                    </button>
+                    <button id="downloadSoundAllImagesBtn" class="btn sound-btn purple-5">
+                        <span class="icon">✨</span> Tất cả ảnh tập
+                    </button>
                 </div>
 
-                <div style="border-top: 1px solid #eee; padding-top: 10px;">
-                    <h4 style="margin: 0 0 5px 0; color: #333; font-size: 14px;">Log Output:</h4>
-                    <div id="logOutput" style="background:#f9f9f9;border:1px solid #eee;height:120px;overflow-y:auto;padding:5px;font-size:10px;color:#444;border-radius:4px;">
-                        Sẵn sàng!
+                <div style="border-top: 1px solid #ffadd1; padding-top: 10px;">
+                    <h4 style="margin: 0 0 5px 0; color: #d63384; font-size: 14px; display: flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 16px;">📝</span> Nhật ký Meow:
+                    </h4>
+                    <div id="logOutput" style="background:#fff0f5;border:1px solid #ffc0cb;height:120px;overflow-y:auto;padding:5px;font-size:10px;color:#884a6c;border-radius:4px; line-height: 1.4;">
+                        Sẵn sàng meow!
                     </div>
                 </div>
             </div>
@@ -666,7 +696,14 @@
                 font-size: 12px;
                 width: 100%;
                 text-align: center;
-                transition: background-color 0.2s ease, transform 0.1s ease;
+                transition: background-color 0.2s ease, transform 0.1s ease, box-shadow 0.2s ease;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 8px;
+            }
+            #missevanSubtitleTool .btn .icon {
+                font-size: 14px;
             }
             #missevanSubtitleTool .btn:hover {
                 transform: translateY(-1px);
@@ -677,29 +714,29 @@
                 box-shadow: none;
             }
 
-            /* Drama Buttons */
-            .drama-btn.green { background-color: #4CAF50; }
-            .drama-btn.green:hover { background-color: #45a049; }
-            .drama-btn.blue { background-color: #2196F3; }
-            .drama-btn.blue:hover { background-color: #1e88e5; }
-            .drama-btn.orange { background-color: #FF5722; }
-            .drama-btn.orange:hover { background-color: #e64a19; }
-            .drama-btn.light-green { background-color: #8BC34A; }
-            .drama-btn.light-green:hover { background-color: #7cb342; }
-            .drama-btn.gray { background-color: #9E9E9E; }
-            .drama-btn.gray:hover { background-color: #7c7c7c; }
+            /* Drama Buttons - Pink shades */
+            .drama-btn.pink-1 { background-color: #ff85a2; }
+            .drama-btn.pink-1:hover { background-color: #ff6a8e; }
+            .drama-btn.pink-2 { background-color: #ff99bb; }
+            .drama-btn.pink-2:hover { background-color: #ff7faa; }
+            .drama-btn.pink-3 { background-color: #ffb3cc; }
+            .drama-btn.pink-3:hover { background-color: #ffa3be; }
+            .drama-btn.pink-4 { background-color: #ffd6e6; color: #884a6c; } /* Lighter pink, darker text */
+            .drama-btn.pink-4:hover { background-color: #ffc0d9; }
+            .drama-btn.pink-5 { background-color: #e0b0d6; } /* Lilac/Lavender */
+            .drama-btn.pink-5:hover { background-color: #c993c1; }
 
-            /* Sound Buttons */
-            .sound-btn.yellow { background-color: #FFC107; color: #333; }
-            .sound-btn.yellow:hover { background-color: #ffb300; }
-            .sound-btn.purple { background-color: #9C27B0; }
-            .sound-btn.purple:hover { background-color: #8e24aa; }
-            .sound-btn.dark-blue { background-color: #607D8B; }
-            .sound-btn.dark-blue:hover { background-color: #546e7a; }
-            .sound-btn.cyan { background-color: #00BCD4; }
-            .sound-btn.cyan:hover { background-color: #00acc1; }
-            .sound-btn.teal { background-color: #009688; }
-            .sound-btn.teal:hover { background-color: #00796b; }
+            /* Sound Buttons - Purple/Pink-Purple shades */
+            .sound-btn.purple-1 { background-color: #c780e0; }
+            .sound-btn.purple-1:hover { background-color: #b36cd1; }
+            .sound-btn.purple-2 { background-color: #e0b0e0; } /* Rosy purple */
+            .sound-btn.purple-2:hover { background-color: #d19fcd; }
+            .sound-btn.purple-3 { background-color: #a272b0; }
+            .sound-btn.purple-3:hover { background-color: #90629c; }
+            .sound-btn.purple-4 { background-color: #f7b7d7; } /* Soft light pink */
+            .sound-btn.purple-4:hover { background-color: #f0a4cd; }
+            .sound-btn.purple-5 { background-color: #d8bfd8; } /* Thistle (muted purple) */
+            .sound-btn.purple-5:hover { background-color: #c2aac2; }
         `;
         document.head.appendChild(style);
 
