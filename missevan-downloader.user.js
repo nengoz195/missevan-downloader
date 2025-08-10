@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Missevan Downloader - Combined (Kitty Edition with Mode 4 Sub)
+// @name         Missevan Downloader - Combined (Kitty Edition with Mode 4 Sub and Homepage Images)
 // @namespace    http://tampermonkey.net/
-// @version      3.3
-// @description  Tự động tải phụ đề Missevan (.lrc, .json, .ass - mode 4), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Tự động chuyển JSON sang SRT khi tải phụ đề JSON. Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers). Giao diện màu hồng dễ thương với chủ đề mèo Kitty.
+// @version      3.4
+// @description  Tự động tải phụ đề Missevan (.lrc, .json, .ass - mode 4), Audio (.m4a) và Ảnh bìa (.jpg/.png), hỗ trợ từng tập hoặc toàn bộ drama. Mặc định tải audio không nén (tùy chọn nén). Tự động chuyển JSON sang SRT khi tải phụ đề JSON. Có thể tải thêm các ảnh phụ liên quan đến sound/drama. Đã sửa đổi để ưu tiên tải ảnh bìa tập chất lượng cao (covers). Thêm tính năng tải tất cả ảnh từ trang chủ. Giao diện màu hồng dễ thương với chủ đề mèo Kitty.
 // @author       Thien Truong Dia Cuu
 // @match        *://www.missevan.com/*
 // @grant        GM_xmlhttpRequest
@@ -20,6 +20,7 @@
     const SOUND_GET_URL = "https://www.missevan.com/sound/getsound";
     const DANMAKU_GET_URL = "https://www.missevan.com/sound/getdm";
     const SOUND_IMAGES_URL = "https://www.missevan.com/sound/getimages";
+    const HOMEPAGE_API_URL = "https://www.missevan.com/site/homepage";
     const UI_STATE_KEY = 'missevanDownloaderUIState';
     const DEFAULT_ASS_DURATION = 3.0;
 
@@ -27,6 +28,7 @@
     const getURLParam = (key) => new URL(window.location.href).searchParams.get(key);
     const getDramaIdFromURL = () => location.pathname.match(/\/mdrama\/(\d+)/)?.[1] || null;
     const getSoundIdFromURL = () => getURLParam("id") || getURLParam("soundid");
+    const isHomepage = () => location.pathname === '/' || location.pathname.startsWith('/explore');
 
     function log(msg) {
         const logBox = document.getElementById('logOutput');
@@ -179,6 +181,71 @@
         } catch (error) { log(`❌ Lỗi khi lấy nội dung ASS cho soundid ${soundid}: ${error}`); return null; }
     }
 
+    async function processHomepage() {
+        log(`📥 Đang xử lý trang chủ...`);
+        try {
+            const data = await fetchData(HOMEPAGE_API_URL);
+            if (!data || !data.info) {
+                log('❌ Không thể lấy dữ liệu từ trang chủ.');
+                return GM_notification({ title: 'Lỗi', text: 'Không thể lấy dữ liệu từ trang chủ.', timeout: 5000 });
+            }
+
+            const zip = new JSZip();
+            let filesAdded = 0;
+            const info = data.info;
+
+            const addFileToZip = async (folder, item, urlKey, nameKey) => {
+                if (!item[urlKey] || !item[nameKey]) return;
+                const name = cleanFilename(item[nameKey]);
+                let url = item[urlKey];
+                if (url.includes('/coversmini/')) url = url.replace('/coversmini/', '/covers/');
+
+                try {
+                    const ext = getFileExtension(url) || 'jpg';
+                    zip.file(`${folder}/${name}.${ext}`, await fetchData(url, 'blob'));
+                    filesAdded++;
+                    log(`  + Đã thêm [${folder}]: ${name}`);
+                    await new Promise(r => setTimeout(r, 100));
+                } catch (error) {
+                    log(`  ❌ Lỗi tải [${folder}] "${name}": ${error}`);
+                }
+            };
+
+            if (info.links && Array.isArray(info.links)) {
+                log(`- Tìm thấy ${info.links.length} ảnh banner.`);
+                for (const item of info.links) await addFileToZip('Banners', item, 'pic', 'title');
+            }
+
+            if (info.albums && Array.isArray(info.albums)) {
+                log(`- Tìm thấy ${info.albums.length} ảnh bìa album.`);
+                for (const item of info.albums) await addFileToZip('Albums', item, 'front_cover', 'title');
+            }
+
+            if (info.sounds) {
+                for (const key in info.sounds) {
+                    const soundList = info.sounds[key];
+                    if (Array.isArray(soundList)) {
+                        log(`- Tìm thấy ${soundList.length} ảnh bìa sound từ mục '${key}'.`);
+                        for (const item of soundList) await addFileToZip(`Sounds/${key}`, item, 'front_cover', 'soundstr');
+                    }
+                }
+            }
+
+            if (filesAdded === 0) {
+                log(`⚠️ Không có file ảnh nào được tìm thấy trên trang chủ.`);
+                return GM_notification({ title: 'Tải Ảnh Trang Chủ', text: 'Không có ảnh nào để tải.', timeout: 5000 });
+            }
+
+            log(`📦 Đang tạo file ZIP (${filesAdded} files)...`);
+            const zipName = `Missevan_Homepage_Images_${new Date().toISOString().split('T')[0]}.zip`;
+            await downloadFile(URL.createObjectURL(await zip.generateAsync({ type: "blob" })), zipName);
+            GM_notification({ title: 'Tải Hoàn Tất', text: `Đã tải ${filesAdded} ảnh từ trang chủ.`, timeout: 5000 });
+        } catch (error) {
+            log(`❌ Lỗi nghiêm trọng khi xử lý trang chủ: ${error}`);
+            GM_notification({ title: 'Lỗi', text: 'Đã xảy ra lỗi khi tải ảnh trang chủ.', timeout: 5000 });
+        }
+    }
+
     async function processDramaId(dramaId, type) {
         log(`📥 Đang xử lý drama ID: ${dramaId} (Loại: ${type.toUpperCase()})`);
         const { name: dramaName, ids, imageUrl: dramaCoverUrl } = await getDramaDetails(dramaId);
@@ -316,7 +383,7 @@
         const box = document.createElement("div");
         box.id = "missevanSubtitleTool";
         box.style = `
-            position: fixed; top: 10px; left: 10px; /* Changed from right to left */
+            position: fixed; top: 10px; left: 10px;
             background: #ffe6f2; border: 1px solid #ffccdd; padding: 10px;
             z-index: 10000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             font-size: 13px; width: 280px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
@@ -350,7 +417,14 @@
                     </div>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 7px;">
+                <div id="homepageDownloaderContainer" style="display: none; flex-direction: column; gap: 7px; border-top: 1px solid #ffadd1; padding-top: 10px;">
+                    <strong style="color: #6a8c4a; display: flex; align-items: center; gap: 5px;">
+                        <span style="font-size: 16px;">🏡</span> Tải từ Trang chủ:
+                    </strong>
+                    <button id="downloadHomepageImagesBtn" class="btn homepage-btn"><span class="icon">🖼️</span> Tải tất cả ảnh trang chủ (ZIP)</button>
+                </div>
+
+                <div id="dramaDownloaderContainer" style="display: none; flex-direction: column; gap: 7px; border-top: 1px solid #ffadd1; padding-top: 10px;">
                     <strong style="color: #c06c84; display: flex; align-items: center; gap: 5px;">
                         <span style="font-size: 16px;">🐾</span> Tải TOÀN BỘ Drama (ZIP):
                     </strong>
@@ -362,7 +436,7 @@
                     <button id="downloadDramaAllImagesBtn" class="btn drama-btn pink-5"><span class="icon">🎀</span> Tất cả ảnh Drama</button>
                 </div>
 
-                <div style="display: flex; flex-direction: column; gap: 7px; border-top: 1px solid #ffadd1; padding-top: 10px;">
+                <div id="soundDownloaderContainer" style="display: none; flex-direction: column; gap: 7px; border-top: 1px solid #ffadd1; padding-top: 10px;">
                     <strong style="color: #a87ea8; display: flex; align-items: center; gap: 5px;">
                         <span style="font-size: 16px;">🐱</span> Tải TỪNG Tập (Sound ID):
                     </strong>
@@ -392,6 +466,7 @@
             #missevanSubtitleTool .btn .icon { font-size: 14px; }
             #missevanSubtitleTool .btn:hover { transform: translateY(-1px); box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
             #missevanSubtitleTool .btn:active { transform: translateY(0); box-shadow: none; }
+            .homepage-btn { background-color: #77dd77; } .homepage-btn:hover { background-color: #6cc46c; }
             .drama-btn.pink-1 { background-color: #ff85a2; } .drama-btn.pink-1:hover { background-color: #ff6a8e; }
             .drama-btn.pink-2 { background-color: #ff99bb; } .drama-btn.pink-2:hover { background-color: #ff7faa; }
             .drama-btn.pink-ass { background-color: #f77f8d; } .drama-btn.pink-ass:hover { background-color: #e06c7a; }
@@ -409,7 +484,39 @@
 
         const dramaId = getDramaIdFromURL();
         const soundId = getSoundIdFromURL();
-        if (!dramaId && !soundId) log("⚠️ Không tìm thấy Drama ID hoặc Sound ID trên trang này. Vui lòng truy cập trang drama hoặc tập.");
+        let sectionsVisible = 0;
+
+        if (isHomepage()) {
+            document.getElementById('homepageDownloaderContainer').style.display = 'flex';
+            document.getElementById('downloadHomepageImagesBtn').addEventListener('click', processHomepage);
+            sectionsVisible++;
+        }
+
+        if (dramaId) {
+            document.getElementById('dramaDownloaderContainer').style.display = 'flex';
+            document.getElementById('downloadDramaLrcBtn').addEventListener('click', () => processDramaId(dramaId, 'lrc'));
+            document.getElementById('downloadDramaJsonBtn').addEventListener('click', () => processDramaId(dramaId, 'json'));
+            document.getElementById('downloadDramaAssBtn').addEventListener('click', () => processDramaId(dramaId, 'ass'));
+            document.getElementById('downloadDramaAudioBtn').addEventListener('click', () => processDramaId(dramaId, 'audio'));
+            document.getElementById('downloadDramaImageBtn').addEventListener('click', () => processDramaId(dramaId, 'image'));
+            document.getElementById('downloadDramaAllImagesBtn').addEventListener('click', () => processDramaId(dramaId, 'all-images'));
+            sectionsVisible++;
+        }
+
+        if (soundId) {
+            document.getElementById('soundDownloaderContainer').style.display = 'flex';
+            document.getElementById('downloadSoundLrcBtn').addEventListener('click', () => processSingleSoundId(soundId, 'lrc'));
+            document.getElementById('downloadSoundJsonBtn').addEventListener('click', () => processSingleSoundId(soundId, 'json'));
+            document.getElementById('downloadSoundAssBtn').addEventListener('click', () => processSingleSoundId(soundId, 'ass'));
+            document.getElementById('downloadSoundAudioBtn').addEventListener('click', () => processSingleSoundId(soundId, 'audio'));
+            document.getElementById('downloadSoundImageBtn').addEventListener('click', () => processSingleSoundId(soundId, 'image'));
+            document.getElementById('downloadSoundAllImagesBtn').addEventListener('click', () => processSingleSoundId(soundId, 'all-images'));
+            sectionsVisible++;
+        }
+
+        if (sectionsVisible === 0) {
+            log("⚠️ Không tìm thấy ID hợp lệ hoặc không phải trang được hỗ trợ.");
+        }
 
         const toggleUIBtn = document.getElementById('toggleUIBtn');
         const uiContent = document.getElementById('uiContent');
@@ -419,25 +526,9 @@
             const isHidden = uiContent.style.display === 'none';
             uiContent.style.display = isHidden ? 'flex' : 'none';
             toggleUIBtn.innerHTML = isHidden ? '&#x25BC;' : '&#x25B2;';
-            missevanSubtitleTool.style.cssText += isHidden ? 'width:280px;height:fit-content;overflow:auto;padding:10px;' : 'width:fit-content;height:fit-content;overflow:hidden;padding:5px;';
+            missevanSubtitleTool.style.cssText += isHidden ? 'width:280px;height:auto;overflow:auto;padding:10px;' : 'width:fit-content;height:fit-content;overflow:hidden;padding:5px;';
             localStorage.setItem(UI_STATE_KEY, isHidden ? 'visible' : 'hidden');
         });
-
-        // Event Listeners for Drama buttons
-        document.getElementById('downloadDramaLrcBtn').addEventListener('click', () => dramaId ? processDramaId(dramaId, 'lrc') : log("❌ Không tìm thấy Drama ID."));
-        document.getElementById('downloadDramaJsonBtn').addEventListener('click', () => dramaId ? processDramaId(dramaId, 'json') : log("❌ Không tìm thấy Drama ID."));
-        document.getElementById('downloadDramaAssBtn').addEventListener('click', () => dramaId ? processDramaId(dramaId, 'ass') : log("❌ Không tìm thấy Drama ID."));
-        document.getElementById('downloadDramaAudioBtn').addEventListener('click', () => dramaId ? processDramaId(dramaId, 'audio') : log("❌ Không tìm thấy Drama ID."));
-        document.getElementById('downloadDramaImageBtn').addEventListener('click', () => dramaId ? processDramaId(dramaId, 'image') : log("❌ Không tìm thấy Drama ID."));
-        document.getElementById('downloadDramaAllImagesBtn').addEventListener('click', () => dramaId ? processDramaId(dramaId, 'all-images') : log("❌ Không tìm thấy Drama ID."));
-
-        // Event Listeners for Single Sound buttons
-        document.getElementById('downloadSoundLrcBtn').addEventListener('click', () => soundId ? processSingleSoundId(soundId, 'lrc') : log("❌ Không tìm thấy Sound ID. Vui lòng truy cập trang từng tập."));
-        document.getElementById('downloadSoundJsonBtn').addEventListener('click', () => soundId ? processSingleSoundId(soundId, 'json') : log("❌ Không tìm thấy Sound ID. Vui lòng truy cập trang từng tập."));
-        document.getElementById('downloadSoundAssBtn').addEventListener('click', () => soundId ? processSingleSoundId(soundId, 'ass') : log("❌ Không tìm thấy Sound ID. Vui lòng truy cập trang từng tập."));
-        document.getElementById('downloadSoundAudioBtn').addEventListener('click', () => soundId ? processSingleSoundId(soundId, 'audio') : log("❌ Không tìm thấy Sound ID. Vui lòng truy cập trang từng tập."));
-        document.getElementById('downloadSoundImageBtn').addEventListener('click', () => soundId ? processSingleSoundId(soundId, 'image') : log("❌ Không tìm thấy Sound ID. Vui lòng truy cập trang từng tập."));
-        document.getElementById('downloadSoundAllImagesBtn').addEventListener('click', () => soundId ? processSingleSoundId(soundId, 'all-images') : log("❌ Không tìm thấy Sound ID. Vui lòng truy cập trang từng tập."));
     }
 
     // INITIALIZATION
