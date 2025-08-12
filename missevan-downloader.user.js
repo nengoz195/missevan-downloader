@@ -3,7 +3,7 @@
 // @downloadURL  https://raw.githubusercontent.com/nengoz195/manbo-subtitle-image-downloader/refs/heads/main/manbo_subtitle_downloader_button.user.js
 // @name         Manbo Media Downloader (Cute Pink Panel Edition - Optimized Images)
 // @namespace    manbo.kilamanbo.media
-// @version      3.2.1 // Chuyển đổi ASS - không dòng trống + Sửa lỗi trùng tên tệp ZIP
+// @version      3.5 // Chuyển đổi ASS - không dòng trống + Sửa lỗi trùng tên tệp ZIP
 // @description  Tải phụ đề và ảnh từ Manbo với giao diện cute hồng, trực quan và dễ sử dụng! Các tùy chọn tải xuống được đặt trong một bảng điều khiển nổi. Ảnh lấy từ API (setPic) và các phần tử DOM cụ thể.
 // @author       Thien Truong Dia Cuu
 // @match        https://kilamanbo.com/manbo/pc/detail*
