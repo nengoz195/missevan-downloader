@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Missevan ASS Downloader & Hướng dẫn</title>
+  <meta name="description" content="Tải phụ đề từ Missevan hàng loạt và hướng dẫn cài đặt script tiện lợi — tất cả trong một trang." />
+  <meta name="theme-color" content="#69c779" />
+
+  <!-- Google Fonts: Comfortaa + Nunito Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@400;700&family=Nunito+Sans:ital,wght@0,400;0,600;0,700;1,400&display=swap" rel="stylesheet">
+
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.1.1/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+  <style>
+    :root {
+      --accent-start: #a7e9af; /* Xanh lá nhạt */
+      --accent-end: #69c779; /* Xanh lá đậm */
+      --accent-text: #fff;
+      --bg: #f7fff5; /* Nền xanh rất nhạt */
+      --card-bg: rgba(255, 255, 255, 0.8);
+      --card-border: rgba(105, 199, 121, 0.25);
+      --text-primary: #1f2937;
+      --text-secondary: #4b5563;
+      --text-muted: #9ca3af;
+      --success: #10b981;
+      --danger: #ef4444;
+      --neutral-bg: #f3f4f6;
+      --neutral-border: #d1d5db;
+      --radius: 16px;
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+      --shadow-lg: 0 10px 15px -3px rgba(105, 199, 121, 0.1), 0 4px 6px -4px rgba(105, 199, 121, 0.1);
+      --focus-shadow: 0 0 0 3px rgba(105, 199, 121, 0.3);
+      --font-body: 'Nunito Sans', sans-serif;
+      --font-heading: 'Comfortaa', cursive;
+      --transition-fast: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    
+    body {
+      font-family: var(--font-body);
+      margin: 0;
+      padding: 2rem 1rem;
+      background-color: var(--bg);
+      background-image: linear-gradient(135deg, #f0fff0 0%, #e6f7ff 100%); /* Nền gradient xanh lá - xanh trời */
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    #bg-canvas {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: -1;
+      opacity: 1;
+    }
+
+    .container { 
+      width: 100%; 
+      max-width: 920px;
+      z-index: 1;
+    }
+    header { text-align: center; margin-bottom: 2.5rem; }
+    h1 {
+      font-family: var(--font-heading);
+      background-image: linear-gradient(45deg, var(--accent-start), var(--accent-end));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin: 0 0 0.5rem 0;
+      font-size: clamp(2.25rem, 5vw, 3rem);
+      display: inline-flex; gap: 0.75rem; align-items: center;
+    }
+    .subtitle { color: var(--text-secondary); max-width: 60ch; margin: 0 auto; font-size: 1.1rem; }
+    .main-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      padding: 2rem; border-radius: var(--radius);
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .card:hover { transform: translateY(-4px); box-shadow: 0 20px 25px -5px rgba(105, 199, 121, 0.1), 0 8px 10px -6px rgba(105, 199, 121, 0.1); }
+    .card h3 {
+      margin: 1.5rem 0 0.75rem 0; color: var(--accent-end);
+      display: flex; align-items: center; gap: 0.6rem;
+      font-weight: 700; font-size: 1.1rem;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 0.5rem;
+    }
+
+    /* --- Giao diện Tab --- */
+    .tabs {
+        display: flex; justify-content: center; gap: 0.75rem;
+        margin-bottom: 2rem; flex-wrap: wrap;
+    }
+    .tab-btn {
+        padding: 0.75rem 1.5rem; border: 1px solid var(--card-border);
+        background-color: rgba(255, 255, 255, 0.6); color: var(--text-secondary);
+        border-radius: 99px; cursor: pointer;
+        font-weight: 700; transition: var(--transition-fast); font-size: 0.95rem;
+    }
+    .tab-btn:hover { background-color: #fff; color: var(--accent-end); transform: translateY(-2px); box-shadow: var(--shadow); }
+    .tab-btn[aria-selected="true"] {
+        background-image: linear-gradient(45deg, var(--accent-start), var(--accent-end));
+        color: var(--accent-text); border-color: transparent;
+        box-shadow: 0 4px 15px rgba(105, 199, 121, 0.25);
+    }
+    .tab-content { display: none; }
+    .tab-content[aria-hidden="false"] { display: block; animation: fadeIn 0.5s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    
+    .form-group { margin-bottom: 1.25rem; }
+    label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.95rem; color: var(--text-primary); }
+    input[type=url], input[type=text], select, textarea {
+      width: 100%; padding: 0.8rem 1rem; border-radius: 12px; border: 1px solid var(--neutral-border);
+      background: #fff; font-size: 1rem; font-family: var(--font-body);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    textarea { min-height: 120px; resize: vertical; }
+    input:focus, textarea:focus, select:focus { outline: 0; box-shadow: var(--focus-shadow); border-color: var(--accent-end); }
+
+    .controls-grid { display: grid; grid-template-columns: 1fr; gap: 0.75rem; }
+    .actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; justify-content: center; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.6rem;
+      padding: 0.75rem 1.25rem; border-radius: 12px; border: 0; cursor: pointer;
+      font-weight: 700; font-size: 1rem; text-decoration: none;
+      transition: var(--transition-fast);
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: var(--shadow); }
+    .btn:active { transform: translateY(0); box-shadow: var(--shadow-sm); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; background-image: none; background-color: #ccc; box-shadow: none; transform: none; }
+    .btn-primary { background-image: linear-gradient(45deg, var(--accent-start), var(--accent-end)); color: var(--accent-text); box-shadow: 0 4px 15px rgba(105, 199, 121, 0.25); }
+    .btn-alt { background-image: linear-gradient(45deg, #5bceee, #4aa9c7); color: #fff; }
+    .btn-soft { background: var(--neutral-bg); color: var(--text-primary); border: 1px solid var(--neutral-border); }
+    .btn-soft:hover { background: #fff; border-color: var(--accent-end); color: var(--accent-end); }
+
+    .list-table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; }
+    .list-table th, .list-table td { padding: 0.75rem; border-bottom: 1px solid var(--card-border); vertical-align: middle; font-size: 0.95rem; }
+    .list-table tbody tr:last-child td { border-bottom: 0; }
+    .list-table tbody tr:nth-child(even) { background-color: rgba(243, 244, 246, 0.5); }
+    .list-table th { text-align: left; color: var(--text-secondary); font-weight: 700; font-size: 0.88rem; }
+    .small { font-size: 0.9rem; color: var(--text-muted); }
+
+    .filename-input { width: 100%; padding: 0.4rem 0.6rem; border-radius: 8px; border: 1px solid var(--neutral-border); }
+    .checkbox { transform: scale(1.1); margin-right: 6px; accent-color: var(--accent-end); }
+
+    pre { background: #f9fafb; border: 1px solid var(--neutral-border); padding: 1rem; border-radius: 12px;
+      font-family: Consolas, 'Courier New', monospace; font-size: 0.9rem; white-space: pre-wrap;
+      word-break: break-all; max-height: 300px; overflow-y: auto; color: var(--text-secondary); }
+    pre::-webkit-scrollbar { width: 8px; }
+    pre::-webkit-scrollbar-thumb { background: #ccc; border-radius: 10px; }
+
+    .proxy-control-wrapper { display: flex; justify-content: space-between; align-items: center;
+      width: 100%; padding: 0.75rem 1rem; border-radius: 12px; border: 1px solid var(--neutral-border);
+      background: #fff; font-size: 1rem; min-height: 48px; }
+    .toggle-switch { position: relative; display: inline-block; width: 50px; height: 28px; flex-shrink: 0; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc; transition: .4s; border-radius: 28px; }
+    .slider:before { position: absolute; content: ""; height: 20px; width: 20px;
+      left: 4px; bottom: 4px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: var(--shadow-sm); }
+    input:checked + .slider { background-color: var(--success); }
+    input:checked + .slider:before { transform: translateX(22px); }
+
+    footer { text-align: center; color: var(--text-muted); margin-top: 2rem; font-size: 0.95rem; }
+    footer a { color: var(--accent-end); text-decoration: none; font-weight: 600; }
+    footer a:hover { text-decoration: underline; }
+    
+    /* --- CSS cho Tab Hướng dẫn --- */
+    .post-body { line-height: 1.8; color: var(--text-secondary); font-size: 1.05rem; }
+    .post-body h2 { 
+      text-align: center; 
+      color: var(--accent-end); 
+      font-family: var(--font-heading);
+      font-size: 1.5rem;
+      margin: 2.5rem 0 1rem;
+    }
+    .post-body hr {
+      border: 0;
+      height: 1px;
+      background-image: linear-gradient(to right, rgba(0, 0, 0, 0), var(--card-border), rgba(0, 0, 0, 0));
+      margin: 2rem 0;
+    }
+    .post-body .highlight { color: var(--accent-end); font-weight: 700; }
+    .post-body .emoji { font-size: 1.2em; vertical-align: middle; }
+    .post-body .note { 
+      background: #f0fff4; /* Nền xanh lá rất nhạt */
+      border-left: 4px solid var(--accent-start); 
+      padding: 1rem 1.25rem; 
+      margin: 1.5rem 0; 
+      border-radius: 0 var(--radius) var(--radius) 0; 
+    }
+    .post-body .note ul { padding-left: 20px; margin: 0.5rem 0 0 0; }
+    .post-body .btn { 
+      background-image: linear-gradient(45deg, var(--accent-start), var(--accent-end)); 
+      color: white !important; 
+      padding: 12px 24px; border-radius: 99px; 
+      text-decoration: none; font-weight: bold; 
+      transition: var(--transition-fast); margin: 5px; 
+      box-shadow: 0 4px 15px rgba(105, 199, 121, 0.25);
+      display: inline-block;
+    }
+    .post-body .btn:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+    .post-body .img-container { margin: 20px 0; display: flex; flex-direction: column; align-items: center; gap: 15px; }
+    .post-body .img-container img { max-width: 100%; border-radius: 12px; box-shadow: var(--shadow); }
+    .post-body .conclusion { text-align: center; font-size: 1.1em; padding: 1.5rem; background: #f0fff4; border-radius: 12px; margin-top: 20px; }
+    
+    @media(min-width: 600px) {
+      .controls-grid { grid-template-columns: 1fr 1fr; }
+      .controls-grid > .form-group:nth-child(3) { grid-column: 1 / -1; }
+      .actions { justify-content: flex-start; }
+    }
+    @media(min-width: 900px) {
+      .btn { min-width: 130px; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="bg-canvas"></canvas>
+
+  <div class="container" role="main">
+    <header>
+      <h1><i class="fas fa-leaf" style="font-size: 2rem;"></i> Tải phụ đề</h1>
+      <p class="subtitle">Một ngày đẹp trời muốn làm thứ gì đó ngầu lòi...</p>
+    </header>
+
+    <!-- Điều hướng Tab -->
+    <div class="tabs" role="tablist" aria-label="Điều hướng chính">
+      <button class="tab-btn" role="tab" aria-selected="true" aria-controls="tab-downloader" id="btn-downloader">Missevan</button>
+      <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-guide" id="btn-guide" tabindex="-1">Cài Script</button>
+    </div>
+
+    <!-- Nội dung Tab 1: Công cụ tải -->
+    <div id="tab-downloader" class="tab-content" role="tabpanel" aria-labelledby="btn-downloader" aria-hidden="false">
+      <section class="card">
+        <!-- PHẦN 1: NHẬP LIỆU VÀ DANH SÁCH -->
+        <div class="form-group">
+          <label for="multiUrls">🌿 Dán link Missevan (player / sound)</label>
+          <textarea id="multiUrls" placeholder="Dán một hoặc nhiều link vào đây, mỗi link một dòng.
+VD: https://www.missevan.com/sound/12345678" aria-label="Nhiều URL"></textarea>
+        </div>
+
+        <div class="controls-grid">
+          <div class="form-group"><label for="mode">📝 Định dạng</label><select id="mode" aria-label="Chọn định dạng"><option value="ass">ASS</option><option value="lrc">LRC</option></select></div>
+          <div class="form-group"><label>🌐 Proxy</label><div class="proxy-control-wrapper"><span id="proxyText">Đang bật</span><label class="toggle-switch"><input type="checkbox" id="proxyToggle" checked><span class="slider"></span></label></div></div>
+          <div class="form-group"><label for="defaultNameTemplate">🔤 Mẫu tên file (dùng {n} cho số thứ tự)</label><input id="defaultNameTemplate" type="text" placeholder="Ví dụ: Tap {n} - Missevan" value="Tap {n}" /><div class="small" style="margin-top:.35rem;">Mẫu sẽ dùng nếu bạn không chỉnh tên từng dòng. {n} = số (1..).</div></div>
+        </div>
+
+        <div class="actions">
+          <button id="parseBtn" class="btn btn-alt"><i class="fas fa-list"></i> Nhận danh sách</button>
+          <button id="downloadAllBtn" class="btn btn-primary"><i class="fas fa-download"></i> Tải tất cả</button>
+          <button id="clearAllBtn" class="btn btn-soft"><i class="fas fa-broom"></i> Xóa tất cả</button>
+        </div>
+
+        <h3><i class="fas fa-clipboard-list"></i> Danh sách link cần tải</h3>
+        <div id="listContainer" style="overflow:auto; border: 1px solid var(--card-border); border-radius:12px;">
+          <table class="list-table" id="listTable" aria-label="Danh sách links">
+            <thead><tr><th style="width:40px;"><input type="checkbox" class="checkbox" id="selectAll" title="Chọn tất cả" /></th><th style="width:60px;">#</th><th>Link</th><th style="width:220px;">Tên file</th><th style="width:120px;">Hành động</th></tr></thead>
+            <tbody id="listBody"></tbody>
+          </table>
+        </div>
+        
+        <!-- PHẦN 2: NHẬT KÝ VÀ XEM TRƯỚC -->
+        <div style="margin-top: 1rem;">
+            <h3><i class="fas fa-history"></i> Nhật ký hoạt động</h3>
+            <pre id="log">Sẵn sàng — dán link và bấm "Nhận danh sách" nha bạn iu! ♡</pre>
+            <h3><i class="fas fa-file-alt"></i> Nội dung xem trước</h3>
+            <pre id="previewArea">—</pre>
+        </div>
+      </section>
+    </div>
+
+    <!-- Nội dung Tab 2: Hướng dẫn -->
+    <div id="tab-guide" class="tab-content" role="tabpanel" aria-labelledby="btn-guide" aria-hidden="true">
+      <section class="card">
+        <div class="post-body">
+            <h2><span>🌱</span> HƯỚNG DẪN TẢI PHỤ ĐỀ MISSEVAN / MANBO <span>🌱</span></h2>
+            <p>Bạn mê nghe kịch truyền thanh nhưng muốn có phụ đề để lưu lại hay dịch sang tiếng Việt? Đừng lo, chỉ với vài bước siêu đơn giản bạn sẽ tải được phụ đề từ <span class="highlight">Missevan</span> và <span class="highlight">Kilamanbo</span> ngay luôn. <span class="emoji">✨</span></p><hr>
+            <h2>1. Cài Violentmonkey</h2>
+            <p>Đầu tiên, bạn cần cài <span class="highlight">tiện ích Violentmonkey</span> – công cụ giúp chạy script siêu tiện lợi.</p>
+            <div class="note"><strong><span class="emoji">👉</span> Lưu ý:</strong><ul><li>Nên dùng <span class="highlight">Microsoft Edge</span> hoặc <span class="highlight">Firefox</span>.</li><li><span class="highlight">Chrome</span> không còn hỗ trợ.</li></ul></div>
+            <div class="img-container">
+              <p>Nhấn vào nút dưới đây để cài Violentmonkey cho trình duyệt Edge:</p>
+              <a class="btn" href="https://microsoftedge.microsoft.com/addons/detail/violentmonkey/eeagobfjdenkkddmbclomhiblgggliao" target="_blank"><i class="fa-brands fa-edge"></i> Cài cho Microsoft Edge</a>
+              <img alt="Violentmonkey" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh3FuOZrryMg7OokhWDhIsS36xx71h9qCMBNt-b0eE4lrNCKQMdg11L4_CThyrMKn6Fo6A-OQCbPlNahSuOuqZxAvHM1ImrMOZI_83JfQ9t16ZcdgSUVPFSd60ZrEsAZ85Dd2aCz9oJ9-yptvFXnm2pkR4sxv30xCEFEY2icmawTg7Bmqb4SvpgxvUCTJU/s1600/526876332_1053506796931094_6967610342767934033_n.jpg" />
+            </div><hr>
+            <h2>2. Cài Script tải phụ đề</h2>
+            <p>Sau khi cài Violentmonkey, bấm vào các nút dưới đây để cài script tương ứng:</p>
+            <div class="img-container">
+              <a class="btn" href="https://github.com/nengoz195/missevan-downloader/raw/refs/heads/main/Missevan%20Downloader%20-%20Combined%20(Kitty%20Edition%20with%20Mode%204%20Sub%20and%20Homepage%20Images)-4.3.user.js" target="_blank">⚡ Cài Script Missevan</a>
+              <a class="btn" href="https://github.com/nengoz195/missevan-downloader/raw/refs/heads/main/Manbo%20Media%20Downloader%20(Cute%20Pink%20Panel%20Edition%20-%20Optimized%20Images)-3.2.--Ho%C3%A0nthi%E1%BB%87ns%E1%BB%ADal%E1%BB%97iGMAPI(x%C3%B3ab%E1%BB%8FGM_getResourceText).user.js" target="_blank">⚡ Cài Script Manbo</a>
+            </div><hr>
+            <h2>3. Truy cập Missevan / Kilamanbo</h2>
+            <p>Mở trang kịch truyền thanh trên Missevan hoặc Kilamanbo, bạn sẽ thấy <span class="highlight">nút tải phụ đề</span> hiện ra ngay dưới trình phát âm thanh.</p>
+            <div class="img-container">
+              <img alt="Missevan có script" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEjFVRkqvtd10ndd-rwS5KHVncq01UUtOwQUiy91-RXJ48C6n1UR9XgFaciEWB3hr3azzcX_fIZ4-oHKfoNjE5FFXG94Dn4JqtAeMB1ypYLwou0FCK_laE1WEGmOpM4phP1zWLPx2j0_EXF_WNN6BKCxCMr02UpXoK0IbwCKbS1h2Py7nbGoGW1uqgHDG4c/s1600/Screenshot%202025-08-30%20121631.png" />
+              <img alt="Manbo có script" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEj4GKUlWt7h1gzuZMyOymA50PZ57lQSdtAVOtm-3sKTLBJPmAnBWvw3XrByk5Au-Ets5MLhm3a5QZzniQ5uKcuct4jRNejEgADiEWakW2EL-LpQY8nSkpgKFCcA8Q5YEXvVaxqkvR0-A4wmmksQ82kNuC0_ETiTaMOR8H3FPP8mh94OD6FWIVAzYPUADPM/s1600/Screenshot%202025-08-30%20121729.png" />
+            </div><hr>
+            <div class="conclusion">
+              <p><span class="emoji">🌿</span> <span class="highlight">KẾT LUẬN</span> <span class="emoji">🌿</span></p>
+              <p>Chỉ cần <span class="highlight">3 bước đơn giản</span> bạn đã có thể tải phụ đề từ <span class="highlight">Missevan</span> và <span class="highlight">Kilamanbo</span> về máy.</p>
+              <p>Giờ thì tha hồ lưu lại, dịch hoặc chỉnh sửa để thưởng thức kịch truyền thanh trọn vẹn nhất nha <span class="emoji">💕</span></p>
+            </div>
+        </div>
+      </section>
+    </div>
+
+    <footer>
+      <p>✨ Thiết kế và phát triển bởi <a href="https://thientruongdiacuu123.blogspot.com/" target="_blank">Thiên Trường Địa Cửu</a></p>
+    </footer>
+  </div>
+  
+  <script>
+  // --- START: Script cho hiệu ứng nền Canvas ---
+  (function(){
+    const canvas = document.getElementById('bg-canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    let particlesArray;
+
+    // Lấy vị trí chuột
+    const mouse = {
+        x: null,
+        y: null,
+        radius: (canvas.height/110) * (canvas.width/110)
+    }
+
+    window.addEventListener('mousemove', function(event){
+        mouse.x = event.x;
+        mouse.y = event.y;
+    });
+
+    // Tạo hạt
+    class Particle {
+        constructor(x, y, directionX, directionY, size, color) {
+            this.x = x;
+            this.y = y;
+            this.directionX = directionX;
+            this.directionY = directionY;
+            this.size = size;
+            this.color = color;
+        }
+
+        // Vẽ từng hạt
+        draw() {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+            ctx.fillStyle = this.color;
+            ctx.fill();
+        }
+
+        // Kiểm tra vị trí hạt, vị trí chuột, di chuyển hạt, vẽ hạt
+        update() {
+            // Kiểm tra nếu hạt ra khỏi màn hình
+            if (this.x > canvas.width || this.x < 0) {
+                this.directionX = -this.directionX;
+            }
+            if (this.y > canvas.height || this.y < 0) {
+                this.directionY = -this.directionY;
+            }
+
+            // Kiểm tra va chạm với chuột
+            let dx = mouse.x - this.x;
+            let dy = mouse.y - this.y;
+            let distance = Math.sqrt(dx*dx + dy*dy);
+            if (distance < mouse.radius + this.size){
+                if (mouse.x < this.x && this.x < canvas.width - this.size * 10) {
+                    this.x += 5;
+                }
+                if (mouse.x > this.x && this.x > this.size * 10) {
+                    this.x -= 5;
+                }
+                if (mouse.y < this.y && this.y < canvas.height - this.size * 10) {
+                    this.y += 5;
+                }
+                if (mouse.y > this.y && this.y > this.size * 10) {
+                    this.y -= 5;
+                }
+            }
+            // Di chuyển hạt
+            this.x += this.directionX;
+            this.y += this.directionY;
+            // Vẽ hạt
+            this.draw();
+        }
+    }
+
+    // Tạo mảng hạt
+    function init() {
+        particlesArray = [];
+        let numberOfParticles = (canvas.height * canvas.width) / 9000;
+        let colors = ['#a7e9af', '#69c779', '#88d8b0', '#5dbb63']; // Bảng màu xanh lá
+        for (let i = 0; i < numberOfParticles; i++) {
+            let size = (Math.random() * 2) + 1;
+            let x = (Math.random() * ((innerWidth - size * 2) - (size * 2)) + size * 2);
+            let y = (Math.random() * ((innerHeight - size * 2) - (size * 2)) + size * 2);
+            let directionX = (Math.random() * .4) - .2;
+            let directionY = (Math.random() * .4) - .2;
+            let color = colors[Math.floor(Math.random() * colors.length)];
+
+            particlesArray.push(new Particle(x, y, directionX, directionY, size, color));
+        }
+    }
+
+    // Kết nối các hạt
+    function connect() {
+        let opacityValue = 1;
+        for (let a = 0; a < particlesArray.length; a++) {
+            for (let b = a; b < particlesArray.length; b++) {
+                let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
+                             + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                if (distance < (canvas.width/7) * (canvas.height/7)) {
+                    opacityValue = 1 - (distance/20000);
+                    let dx = mouse.x - particlesArray[a].x;
+                    let dy = mouse.y - particlesArray[a].y;
+                    let mouseDistance = Math.sqrt(dx*dx+dy*dy);
+                    if (mouseDistance < 150) {
+                       ctx.strokeStyle = `rgba(105, 199, 121, ${opacityValue})`; // Màu xanh lá khi hover
+                    } else {
+                       ctx.strokeStyle = `rgba(107, 114, 128, ${opacityValue})`; // Màu xám cho đường nối
+                    }
+                    ctx.lineWidth = 1;
+                    ctx.beginPath();
+                    ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                    ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                    ctx.stroke();
+                }
+            }
+        }
+    }
+
+    // Vòng lặp animation
+    function animate() {
+        requestAnimationFrame(animate);
+        ctx.clearRect(0,0,innerWidth, innerHeight);
+
+        for (let i = 0; i < particlesArray.length; i++) {
+            particlesArray[i].update();
+        }
+        connect();
+    }
+
+    // Thay đổi kích thước canvas khi cửa sổ thay đổi
+    window.addEventListener('resize', 
+        function() {
+            canvas.width = innerWidth;
+            canvas.height = innerHeight;
+            mouse.radius = ((canvas.height/110) * (canvas.height/110));
+            init();
+        }
+    );
+
+    // Tắt chuột khi rời khỏi cửa sổ
+    window.addEventListener('mouseout', 
+        function(){
+            mouse.x = undefined;
+            mouse.y = undefined;
+        }
+    );
+
+    init();
+    animate();
+  })();
+  </script>
+
+  <script>
+  // --- START: Script cho chức năng chính của trang ---
+  (function(){
+    // --- START: Chức năng chuyển Tab ---
+    const tabs = document.querySelectorAll('[role="tab"]');
+    const tabPanels = document.querySelectorAll('[role="tabpanel"]');
+    
+    tabs.forEach(tab => {
+      tab.addEventListener('click', e => {
+        e.preventDefault();
+        
+        tabs.forEach(t => {
+          t.setAttribute('aria-selected', 'false');
+          t.setAttribute('tabindex', '-1');
+        });
+        
+        tab.setAttribute('aria-selected', 'true');
+        tab.removeAttribute('tabindex');
+
+        tabPanels.forEach(panel => {
+          if (panel.getAttribute('aria-labelledby') === tab.id) {
+            panel.setAttribute('aria-hidden', 'false');
+          } else {
+            panel.setAttribute('aria-hidden', 'true');
+          }
+        });
+      });
+    });
+    // --- END: Chức năng chuyển Tab ---
+
+    const $ = id => document.getElementById(id);
+
+    const DANMAKU_GET_URL = 'https://www.missevan.com/sound/getdm?soundid=';
+    const VERCEL_PROXY_URL = 'https://vercel-proxy-hazel-delta.vercel.app/api/proxy?url=';
+
+    // DOM Elements
+    const logEl = $('log');
+    const previewEl = $('previewArea');
+    const multiUrls = $('multiUrls');
+    const parseBtn = $('parseBtn');
+    const downloadAllBtn = $('downloadAllBtn');
+    const clearAllBtn = $('clearAllBtn');
+    const modeSelect = $('mode');
+    const proxyToggle = $('proxyToggle');
+    const proxyText = $('proxyText');
+    const defaultNameTemplate = $('defaultNameTemplate');
+    const listBody = $('listBody');
+    const selectAll = $('selectAll');
+    
+    // State
+    let useProxy = proxyToggle.checked;
+    let items = []; // {id, url, soundid, filename, selected, status, events}
+    const originalButtonTexts = {
+        parseBtn: parseBtn.innerHTML,
+        downloadAllBtn: downloadAllBtn.innerHTML
+    };
+
+    // --- Core Functions ---
+    function log(msg) {
+      if (logEl.textContent.includes('Sẵn sàng')) logEl.textContent = '';
+      const t = new Date().toLocaleTimeString('vi-VN');
+      logEl.textContent += `[${t}] ${msg}\n`;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function clearAll() {
+      multiUrls.value = '';
+      previewEl.textContent = '—';
+      items = [];
+      renderList();
+      logEl.textContent = 'Sẵn sàng — dán link và bấm nút nha bạn iu! ♡';
+      log('Đã dọn dẹp mọi thứ! ✨');
+    }
+
+    function setButtonLoading(btn, isLoading, loadingText = "Đang xử lý...") {
+        btn.disabled = isLoading;
+        if (isLoading) {
+            btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${loadingText}`;
+        } else {
+            btn.innerHTML = originalButtonTexts[btn.id];
+        }
+    }
+
+    // --- Formatting Functions ---
+    function assTime(sec) {
+      sec = Math.max(0, sec);
+      const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60), cs = Math.round((sec - Math.floor(sec)) * 100);
+      return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}.${String(cs).padStart(2,'0')}`;
+    }
+
+    function buildASS(events) {
+      const header = ['[Script Info]','; Generated by Missevan ASS Downloader','Title: Missevan Danmaku','ScriptType: v4.00+','WrapStyle: 0','ScaledBorderAndShadow: Yes','Collisions: Normal','','[V4+ Styles]','Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding','Style: Default,Arial,20,&H00FFFFFF,&H0000FFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,1,1,2,10,10,10,1','','[Events]','Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text'];
+      const lines = events.map((event, i) => {
+        const [start, text] = event;
+        const safe = text.replace(/\r?\n/g, '\\N');
+        let end = (i + 1 < events.length) ? Math.min(events[i + 1][0] - 0.01, start + 5.0) : start + 5.0;
+        if (end <= start) end = start + 0.01;
+        return `Dialogue: 0,${assTime(start)},${assTime(end)},Default,,0,0,0,,${safe}`;
+      });
+      return [...header, ...lines].join('\n');
+    }
+
+    function makeLRC(events, title) {
+      let out = `[ti:${title||'Missevan Sound'}]\n[ar:Missevan]\n[al:Danmaku LRC]\n`;
+      for (const [t, txt] of events) {
+        const s=Math.floor(t), ms=Math.floor((t-s)*100);
+        const tag=`[${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}.${String(ms).padStart(2,'0')}]`;
+        out += `${tag}${txt}\n`;
+      }
+      return out;
+    }
+
+    // --- Data Processing Functions ---
+    function parseSoundIdFromUrl(u) {
+      try {
+        const url = new URL(u.trim());
+        const params = url.searchParams;
+        if (params.get('id')) return params.get('id');
+        if (params.get('soundid')) return params.get('soundid');
+        const m = url.pathname.match(/\/sound\/(\d+)/);
+        if (m) return m[1];
+      } catch (e) { /* Fallback for non-standard URLs */ }
+      const loose = u.match(/soundid=(\d+)|sound\/(\d+)|player\?id=(\d+)/);
+      return loose ? (loose[1] || loose[2] || loose[3]) : null;
+    }
+
+    async function fetchDanmakuXml(soundid) {
+      const target = DANMAKU_GET_URL + soundid;
+      const finalUrl = useProxy ? VERCEL_PROXY_URL + encodeURIComponent(target) : target;
+      log(`Đang tải danmaku ID ${soundid}...`);
+      const res = await fetch(finalUrl);
+      if (!res.ok) throw new Error(`Lỗi HTTP ${res.status} ${res.statusText}`);
+      return await res.text();
+    }
+
+    function extractMode4(xmlText) {
+      const p = new DOMParser(), doc = p.parseFromString(xmlText, 'text/xml');
+      if (doc.querySelector('parsererror')) {
+        if (xmlText.trim() === '' || doc.querySelector('d') === null) return [];
+        throw new Error('Không thể phân tích XML.');
+      }
+      const nodes = Array.from(doc.querySelectorAll('d'));
+      const out = nodes.map(n => {
+        const pAttr = n.getAttribute('p') || '';
+        const parts = pAttr.split(',');
+        if (parts.length < 2) return null;
+        const st = parseFloat(parts[0]), mode = parts[1], text = (n.textContent || '').trim();
+        return (mode === '4' && !isNaN(st) && text) ? [st, text] : null;
+      }).filter(Boolean);
+      return out.sort((a, b) => a[0] - b[0]);
+    }
+    
+    function downloadBlob(blob, filename) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    }
+    
+    function makeFilename(template, n, fallback) {
+      return (template || fallback || `Tap {n}`).replace(/\{n\}/gi, n).trim();
+    }
+
+    function renderList() {
+      if (items.length === 0) {
+        listBody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);padding:2rem;">Chưa có link nào được thêm.</td></tr>`;
+        return;
+      }
+
+      listBody.innerHTML = '';
+      items.forEach((it, idx) => {
+        const tr = listBody.insertRow();
+        tr.dataset.index = idx;
+        tr.innerHTML = `
+          <td><input type="checkbox" class="checkbox" ${it.selected ? 'checked' : ''}></td>
+          <td>${idx + 1}</td>
+          <td style="max-width:300px;overflow-wrap:break-word;"><a href="${it.url}" target="_blank" rel="noreferrer noopener" title="${it.url}">${it.url}</a></td>
+          <td><input type="text" class="filename-input" value="${it.filename}"></td>
+          <td style="display:flex;gap:.4rem;">
+            <button class="btn btn-soft btn-preview" style="padding:.35rem .6rem;" title="Xem trước phụ đề">Xem</button>
+            <button class="btn btn-alt btn-download" style="padding:.35rem .6rem;" title="Tải file này">Tải</button>
+          </td>
+        `;
+        tr.querySelector('.checkbox').addEventListener('change', e => { it.selected = e.target.checked; });
+        tr.querySelector('.filename-input').addEventListener('input', e => { it.filename = e.target.value.trim(); });
+        tr.querySelector('.btn-preview').addEventListener('click', () => previewItem(idx));
+        tr.querySelector('.btn-download').addEventListener('click', () => downloadItem(idx));
+      });
+    }
+
+    // --- Main Event Handlers ---
+    async function handleParseLinks() {
+      const raw = multiUrls.value.trim();
+      if (!raw) { log('❗ Chưa dán link nào.'); return; }
+      
+      setButtonLoading(parseBtn, true, 'Đang phân tích...');
+      await new Promise(r => setTimeout(r, 100)); // UI update delay
+      
+      try {
+        const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+        const template = defaultNameTemplate.value.trim() || 'Tap {n}';
+        items = lines.map((ln, i) => ({
+          id: i, url: ln, soundid: parseSoundIdFromUrl(ln),
+          filename: makeFilename(template, i + 1, `Tap ${i+1}`),
+          selected: true, status: 'pending', events: null
+        }));
+        renderList();
+        const validCount = items.filter(it => it.soundid).length;
+        log(`✅ Tìm thấy ${items.length} link, trong đó ${validCount} link hợp lệ.`);
+        if (validCount < items.length) log('⚠️ Một số link không hợp lệ hoặc không tìm thấy ID, sẽ được bỏ qua khi tải.');
+      } catch (err) {
+        log(`❌ Lỗi khi phân tích link: ${err.message}`);
+      } finally {
+        setButtonLoading(parseBtn, false);
+      }
+    }
+    
+    async function processOne(it, idx, actionType='download') {
+      if (!it.soundid) { log(`⚠️ [${idx+1}] Bỏ qua vì link không hợp lệ.`); return false; }
+      try {
+        it.status = 'loading';
+        const xml = await fetchDanmakuXml(it.soundid);
+        const events = extractMode4(xml);
+        if (!events.length) { log(`⚠️ [${idx+1}] Không tìm thấy phụ đề (mode 4).`); return false; }
+        it.events = events;
+        
+        const mode = modeSelect.value;
+        const basename = it.filename || makeFilename(defaultNameTemplate.value, idx+1, `Tap ${idx+1}`);
+        const filename = `${basename}.${mode}`;
+        const output = mode === 'ass' ? buildASS(events) : makeLRC(events, basename);
+
+        if (actionType === 'preview') {
+          previewEl.textContent = output;
+          log(`✨ [${idx+1}] Xem trước ${filename} (dòng: ${events.length}).`);
+        } else {
+          downloadBlob(new Blob(['\uFEFF' + output], { type: 'text/plain;charset=utf-8' }), filename);
+          log(`🎉 [${idx+1}] Bắt đầu tải ${filename}`);
+        }
+        return true;
+      } catch (err) {
+        log(`❌ [${idx+1}] Lỗi: ${err.message || err}`);
+        return false;
+      } finally {
+        it.status = 'done';
+      }
+    }
+
+    async function handleDownloadAll() {
+      const toDownload = items.map((it, idx) => ({it, idx})).filter(x => x.it.selected);
+      if (!toDownload.length) { log('❗ Không có mục nào được chọn để tải.'); return; }
+      
+      setButtonLoading(downloadAllBtn, true, 'Đang tải...');
+      log(`🔁 Bắt đầu tải hàng loạt ${toDownload.length} mục...`);
+      let successCount = 0;
+
+      try {
+        for (const {it, idx} of toDownload) {
+          const result = await processOne(it, idx, 'download');
+          if (result) successCount++;
+          await new Promise(r => setTimeout(r, 300)); // Delay between downloads
+        }
+      } finally {
+        log(`✅ Hoàn tất! Tải thành công ${successCount}/${toDownload.length} mục.`);
+        setButtonLoading(downloadAllBtn, false);
+      }
+    }
+
+    async function previewItem(idx) {
+      const it = items[idx];
+      if (!it) return;
+      if (it.events) { // Use cached data if available
+        const mode = modeSelect.value, basename = it.filename;
+        const output = mode === 'ass' ? buildASS(it.events) : makeLRC(it.events, basename);
+        previewEl.textContent = output;
+        log(`✨ [${idx+1}] Hiển thị xem trước từ cache.`);
+      } else {
+        await processOne(it, idx, 'preview');
+      }
+    }
+
+    async function downloadItem(idx) {
+      if (!items[idx]) return;
+      await processOne(items[idx], idx, 'download');
+    }
+
+    // --- Initial Setup & Event Listeners ---
+    parseBtn.addEventListener('click', handleParseLinks);
+    downloadAllBtn.addEventListener('click', handleDownloadAll);
+    clearAllBtn.addEventListener('click', clearAll);
+
+    selectAll.addEventListener('change', () => {
+      const isChecked = selectAll.checked;
+      items.forEach(it => it.selected = isChecked);
+      // Update checkbox UI
+      document.querySelectorAll('#listBody .checkbox').forEach(cb => cb.checked = isChecked);
+    });
+
+    proxyToggle.addEventListener('change', () => {
+      useProxy = proxyToggle.checked;
+      proxyText.textContent = useProxy ? 'Đang bật' : 'Đang tắt';
+      log(useProxy ? '🌐 Đã bật CORS proxy.' : '🚫 Đã tắt CORS proxy.');
+    });
+
+    multiUrls.addEventListener('paste', () => setTimeout(handleParseLinks, 80));
+
+    // Initial render
+    renderList();
+    proxyToggle.dispatchEvent(new Event('change'));
+  })();
+  </script>
+</body>
+</html>
