@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="vi" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trình tải phụ đề (Chọn lọc)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <style>
+    /* Sử dụng font Inter mượt mà */
+    body { font-family: 'Inter', sans-serif; }
+    
+    /* Tùy chỉnh thanh cuộn màu xanh lá */
+    textarea::-webkit-scrollbar, #results::-webkit-scrollbar { 
+      width: 8px; 
+    }
+    textarea::-webkit-scrollbar-thumb, #results::-webkit-scrollbar-thumb { 
+      background: #2f855a; /* green-700 */
+      border-radius: 10px; 
+    }
+    textarea::-webkit-scrollbar-thumb:hover, #results::-webkit-scrollbar-thumb:hover { 
+      background: #38a169; /* green-600 */
+    }
+    
+    /* Kiểu cho nút bị vô hiệu hóa */
+    button:disabled { 
+      cursor: not-allowed; 
+      opacity: .7; 
+    }
+    
+    /* Biểu tượng loading spinner */
+    .spinner { 
+      border: 2px solid rgba(255,255,255,0.3); 
+      border-left-color:#fff; 
+      border-radius:50%; 
+      width:16px;
+      height:16px; 
+      animation:spin 1s linear infinite;
+    }
+    @keyframes spin{to{transform:rotate(360deg)}}
+
+    /* --- CSS cho Hướng dẫn (Accordion) --- */
+    /* Ẩn marker mặc định */
+    summary {
+      list-style: none; /* Firefox */
+    }
+    summary::-webkit-details-marker {
+      display: none; /* Chrome */
+    }
+    /* Xoay icon chevron khi mở */
+    details[open] .details-marker {
+      transform: rotate(180deg);
+    }
+
+    /* Kiểu cho item trong kết quả */
+    .result-item {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem 1rem; /* py-3 px-4 */
+      background-color: #374151; /* bg-gray-700 */
+      border-radius: 0.5rem; /* rounded-lg */
+      transition: background-color 0.2s;
+    }
+    .result-item:hover {
+      background-color: #4B5563; /* bg-gray-600 */
+    }
+    .result-item input[type="checkbox"] {
+      margin-right: 0.75rem; /* mr-3 */
+      width: 1rem; /* w-4 */
+      height: 1rem; /* h-4 */
+      border-radius: 0.25rem; /* rounded */
+      background-color: #1F2937; /* bg-gray-800 */
+      border-color: #4B5563; /* border-gray-600 */
+      color: #10B981; /* text-green-500 */
+      cursor: pointer;
+    }
+    .result-item input[type="checkbox"]:focus {
+      ring: 2px;
+      ring-color: #10B981; /* focus:ring-green-500 */
+    }
+    .result-item label {
+      flex-grow: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body class="bg-gray-900 text-white min-h-full flex items-center justify-center p-4 md:p-6">
+
+  <!-- Tăng chiều rộng tối đa cho bố cục 2 cột trên desktop -->
+  <div class="w-full max-w-5xl bg-gray-800 rounded-lg shadow-2xl p-6 md:p-8">
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold text-green-400">Trình tải phụ đề</h1>
+    </div>
+
+    <!-- Bố cục chính: 1 cột trên di động, 2 cột trên desktop (md) -->
+    <div class="grid grid-cols-1 md:grid-cols-2 md:gap-8">
+      
+      <!-- [CỘT TRÁI] - Nhập liệu & Hướng dẫn -->
+      <div class="flex flex-col space-y-4">
+        
+        <div>
+          <p class="text-gray-400">Chọn 1 trong 2 cách: Tải bằng ID hoặc tải lên tệp JSON.</p>
+        </div>
+
+        <!-- Hướng dẫn lấy ID (dạng accordion) -->
+        <div class="text-left">
+          <details class="bg-gray-700 rounded-lg overflow-hidden">
+            <summary class="cursor-pointer p-3 font-medium text-green-300 flex justify-between items-center">
+              <span>Cách 1: Lấy ID (Hướng dẫn)</span>
+              <!-- Icon Chevron cho accordion -->
+              <svg class="w-5 h-5 transition-transform duration-200 transform details-marker" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
+            </summary>
+            <div class="p-4 border-t border-gray-600 text-gray-300 space-y-2 text-sm">
+              <p><strong>Cách 1.1: Lấy từ URL (dễ nhất)</strong></p>
+              <p class="pl-2">ID nằm ở cuối link khi bạn mở kịch bản trên web PC.</p>
+              <p class="pl-2 bg-gray-900 p-2 rounded break-all">.../detail?id=<strong>123456</strong></p>
+              
+              <p class="!mt-4"><strong>Cách 1.2: Dùng Dev Tools (F12)</strong></p>
+              <p class="pl-2">1. Trên trang kịch bản, nhấn <strong>F12</strong> để mở Dev Tools.</p>
+              <p class="pl-2">2. Chọn tab <strong>"Network"</strong> (Mạng).</p>
+              <p class="pl-2">3. Tải lại trang (F5).</p>
+              <p class="pl-2">4. Tìm file tên <strong>dramaDetail</strong>, bấm vào nó.</p>
+              <p class="pl-2">5. Nhìn sang bên phải, chọn tab <strong>"Payload"</strong>, bạn sẽ thấy <strong>dramaId</strong>.</p>
+              <img src="https://lh3.googleusercontent.com/pw/AP1GczMBJTWEk4E23IhtcO9CpO-v9KI5WySNoQyLO_m4ac1wGsSdU7GbqqX49lrpu5Kuw7YAwJiYAdqHwznuNZqdWzsf3ExhzZgESx1gKy3TAlEqZtf6usBr92CuzmsDgszRUrPv5IqoG6TA2p0sMUbnV3Kc=w1838-h947-s-no-gm?authuser=0" 
+                   alt="Ảnh minh họa cách lấy ID" 
+                   class="w-full h-auto rounded-md mt-3 border border-gray-600">
+            </div>
+          </details>
+        </div>
+
+        <!-- Ô nhập ID -->
+        <div>
+          <label for="idInput" class="block text-sm font-medium text-gray-300 mb-2">ID Kịch bản Manbo:</label>
+          <input type="text" id="idInput" class="w-full p-4 bg-gray-900 border border-gray-700 rounded-md shadow-inner text-gray-200 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none" placeholder="Nhập ID kịch bản (ví dụ: 123456)">
+        </div>
+
+        <!-- Nút "Tìm" -->
+        <button id="findButton" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 flex items-center justify-center space-x-2">
+          <span id="buttonText">Tìm phụ đề (Qua ID)</span>
+          <div id="loadingSpinner" class="spinner hidden"></div>
+        </button>
+
+        <!-- Ngăn chia "HOẶC" -->
+        <div class="relative my-2">
+          <div class="absolute inset-0 flex items-center" aria-hidden="true">
+            <div class="w-full border-t border-gray-600"></div>
+          </div>
+          <div class="relative flex justify-center">
+            <span class="bg-gray-800 px-2 text-sm text-gray-400">HOẶC</span>
+          </div>
+        </div>
+    
+        <!-- Cách 2: Tải lên tệp JSON -->
+        <div>
+          <label for="jsonFile" class="block text-sm font-medium text-gray-300 mb-2">Cách 2: Tải lên tệp JSON (từ dramaDetail hoặc dramaSetSimpleList):</label>
+          <input type="file" id="jsonFile" accept=".json" class="block w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700 file:cursor-pointer"/>
+        </div>
+        <button id="processJsonButton" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 flex items-center justify-center space-x-2">
+          <span id="jsonButtonText">Xử lý tệp JSON</span>
+          <div id="jsonLoadingSpinner" class="spinner hidden"></div>
+        </button>
+
+        <!-- Các nút hành động (Tải ZIP) -->
+        <div id="actionsContainer" class="hidden grid grid-cols-1 sm:grid-cols-2 gap-4 !mt-6">
+          <button id="downloadLrcZipButton" class="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition transform hover:scale-105 flex items-center justify-center space-x-2">
+            <span id="lrcZipButtonText">Tải (.lrc) đã chọn</span> <!-- THAY ĐỔI -->
+            <div id="lrcZipLoadingSpinner" class="spinner hidden"></div>
+          </button>
+          <button id="downloadAssZipButton" class="w-full bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-6 rounded-lg shadow-lg transition transform hover:scale-105 flex items-center justify-center space-x-2">
+            <span id="assZipButtonText">Tải (.ass) đã chọn</span> <!-- THAY ĐỔI -->
+            <div id="assZipLoadingSpinner" class="spinner hidden"></div>
+          </button>
+        </div>
+
+        <!-- Hộp thông báo -->
+        <div id="messageBox" class="hidden p-3 rounded-md text-center"><span id="messageText"></span></div>
+      </div>
+      
+      <!-- [CỘT PHẢI] - Kết quả -->
+      <div class="mt-8 md:mt-0 flex flex-col h-full"> <!-- Thêm flex-col và h-full -->
+        <div class="flex justify-between items-center mb-4">
+          <h2 class="text-2xl font-semibold text-gray-100">Kết quả:</h2>
+           <!-- THÊM: Container cho Chọn tất cả -->
+          <div id="selectAllContainer" class="hidden items-center text-sm">
+            <input type="checkbox" id="selectAllCheckbox" class="mr-2 w-4 h-4 rounded bg-gray-700 border-gray-600 text-green-500 focus:ring-green-500 cursor-pointer">
+            <label for="selectAllCheckbox" class="cursor-pointer text-gray-300">Chọn tất cả</label>
+          </div>
+        </div>
+       
+        <!-- Tăng chiều cao của box kết quả trên desktop -->
+        <!-- Thêm flex-grow cho div này -->
+        <div id="results" class="space-y-3 max-h-64 md:max-h-[560px] overflow-y-auto pr-2 bg-gray-900 p-4 rounded-lg shadow-inner flex-grow">
+          <p id="placeholder" class="text-gray-500">Chưa có dữ liệu...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  const findButton = document.getElementById("findButton");
+  const buttonText = document.getElementById("buttonText");
+  const loadingSpinner = document.getElementById("loadingSpinner");
+  const idInput = document.getElementById("idInput");
+  const resultsDiv = document.getElementById("results");
+  const messageBox = document.getElementById("messageBox");
+  const messageText = document.getElementById("messageText");
+  const placeholder = document.getElementById("placeholder");
+  const actionsContainer = document.getElementById("actionsContainer");
+  
+  const jsonFileInput = document.getElementById("jsonFile");
+  const processJsonButton = document.getElementById("processJsonButton");
+  const jsonButtonText = document.getElementById("jsonButtonText");
+  const jsonLoadingSpinner = document.getElementById("jsonLoadingSpinner");
+
+  // THÊM: Các phần tử mới
+  const selectAllContainer = document.getElementById("selectAllContainer");
+  const selectAllCheckbox = document.getElementById("selectAllCheckbox");
+  const downloadLrcZipButton = document.getElementById("downloadLrcZipButton");
+  const downloadAssZipButton = document.getElementById("downloadAssZipButton");
+
+  let fetchedLrcFiles = []; // Vẫn lưu trữ danh sách gốc để tham khảo nếu cần
+  let dramaTitle = "subtitles";
+
+  function showMessage(msg, isErr = false) {
+    messageText.textContent = msg;
+    messageBox.classList.remove("hidden");
+    messageBox.className = "p-3 rounded-md text-center " + 
+      (isErr ? "bg-red-800 border border-red-600 text-red-100" : "bg-green-800 border border-green-600 text-green-100");
+  }
+
+  function safeName(name) {
+    if (!name) return "no_name";
+    return name.replace(/[\\\/:*?"<>|]/g, "_").trim() || "no_name";
+  }
+
+  function formatAssTime(totalSeconds){
+    const h=Math.floor(totalSeconds/3600);
+    const m=Math.floor((totalSeconds%3600)/60);
+    const s=Math.floor(totalSeconds%60);
+    const cs=Math.round((totalSeconds-(h*3600)-(m*60)-s)*100);
+    return `${h}:${m.toString().padStart(2,"0")}:${s.toString().padStart(2,"0")}.${cs.toString().padStart(2,"0")}`;
+  }
+
+  function lrcToAss(lrc,title){
+    const header=`[Script Info]
+Title: ${title}
+ScriptType: v4.00+
+WrapStyle: 0
+PlayResX: 1920
+PlayResY: 1080
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,Inter,60,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+`;
+    const lines=lrc.split(/[\r\n]+/);
+    const parsed=[];
+    const reg=/\[(\d{2}):(\d{2})\.(\d{2,3})\]/g;
+    for(const line of lines){
+      const text=line.replace(reg,"").trim();
+      if(!text) continue;
+      let m;while((m=reg.exec(line))!==null){
+        const min=parseInt(m[1]),sec=parseInt(m[2]);
+        const cs_ms=m[3];let dec=0;
+        if(cs_ms.length===2) dec=parseInt(cs_ms)/100;
+        else dec=parseInt(cs_ms)/1000;
+        parsed.push({time:min*60+sec+dec,text});
+      }
+    }
+    parsed.sort((a,b)=>a.time-b.time);
+    const out=parsed.map((l,i)=>{
+      const end=(i+1<parsed.length)?parsed[i+1].time:l.time+3;
+      return `Dialogue: 0,${formatAssTime(l.time)},${formatAssTime(end)},Default,,0,0,0,,${l.text}`;
+    });
+    return header+out.join("\n");
+  }
+
+  async function fetchFile(url,title){
+    const proxy=`https://vercel-proxy-hazel-delta.vercel.app/api/proxy?url=${encodeURIComponent(url)}`;
+    try{
+      const res=await fetch(proxy);
+      if(!res.ok) throw new Error(`Lỗi ${res.status}`);
+      return await res.text();
+    }catch(e){
+      console.warn(title,e.message);
+      return null;
+    }
+  }
+
+  // THAY ĐỔI: Hàm displayLinks
+  function displayLinks(list){
+    resultsDiv.innerHTML=""; // Xóa placeholder
+    const p=document.createElement("p");
+    p.className="text-sm text-green-300 mb-4";
+    p.textContent=`Tìm thấy ${list.length} file phụ đề.`;
+    resultsDiv.appendChild(p);
+
+    list.forEach((f, index) => {
+      const div = document.createElement("div");
+      div.className = "result-item"; // Sử dụng class CSS đã định nghĩa
+
+      const checkbox = document.createElement("input");
+      checkbox.type = "checkbox";
+      checkbox.id = `file-${index}`;
+      checkbox.className = "file-checkbox"; // Thêm class để dễ dàng chọn
+      checkbox.dataset.title = f.title; // Lưu trữ dữ liệu trên checkbox
+      checkbox.dataset.url = f.url;
+
+      const label = document.createElement("label");
+      label.htmlFor = `file-${index}`;
+      label.textContent = f.title;
+      label.title = f.title;
+
+      div.appendChild(checkbox);
+      div.appendChild(label);
+      resultsDiv.appendChild(div);
+    });
+
+    // Hiển thị nút "Chọn tất cả"
+    selectAllContainer.classList.remove("hidden");
+    selectAllContainer.classList.add("flex"); // Đảm bảo nó là flex để căn chỉnh
+    selectAllCheckbox.checked = false; // Đảm bảo "Chọn tất cả" reset
+  }
+  
+  // THÊM: Sự kiện cho "Chọn tất cả"
+  selectAllCheckbox.addEventListener("change", (e) => {
+    const isChecked = e.target.checked;
+    const allCheckboxes = resultsDiv.querySelectorAll(".file-checkbox");
+    allCheckboxes.forEach(cb => {
+      cb.checked = isChecked;
+    });
+  });
+
+  // THÊM: Hàm trợ giúp để lấy các file đã chọn
+  function getSelectedFiles() {
+    const selectedCheckboxes = resultsDiv.querySelectorAll(".file-checkbox:checked");
+    const files = [];
+    selectedCheckboxes.forEach(cb => {
+      files.push({
+        title: cb.dataset.title,
+        url: cb.dataset.url
+      });
+    });
+    return files;
+  }
+
+  // THÊM: Hàm reset UI tổng quát
+  function resetUI() {
+    resultsDiv.innerHTML = "";
+    resultsDiv.appendChild(placeholder);
+    messageBox.classList.add("hidden");
+    actionsContainer.classList.add("hidden");
+    selectAllContainer.classList.add("hidden"); // Ẩn "Chọn tất cả"
+    selectAllCheckbox.checked = false; // Reset
+    fetchedLrcFiles = []; // Xóa danh sách file cũ
+  }
+
+  /**
+   * Hàm chung để xử lý danh sách tập, điền vào fetchedLrcFiles và cập nhật UI
+   */
+  function processEpisodeList(episodes) {
+    fetchedLrcFiles = []; // Luôn reset danh sách này
+    episodes.forEach(it => {
+      if (it.setLrcUrl) {
+        fetchedLrcFiles.push({ 
+          title: it.setTitle || it.setName || "Không tên", 
+          url: it.setLrcUrl 
+        });
+      }
+    });
+
+    if (!fetchedLrcFiles.length) {
+      resultsDiv.innerHTML = "<p class='text-gray-500'>Không tìm thấy file .lrc nào trong dữ liệu.</p>";
+      actionsContainer.classList.add("hidden");
+      selectAllContainer.classList.add("hidden");
+      showMessage("Không tìm thấy phụ đề .lrc nào.", true);
+      return false; // Báo hiệu thất bại
+    }
+    
+    // Sử dụng danh sách vừa tạo để hiển thị
+    displayLinks(fetchedLrcFiles); 
+    actionsContainer.classList.remove("hidden");
+    return true; // Báo hiệu thành công
+  }
+
+  /**
+   * Xử lý dữ liệu trả về từ API (nút Tìm)
+   */
+  async function processApiData(data) {
+    if (!data.data || !data.data.setRespList) {
+      showMessage("Cấu trúc JSON (API) không hợp lệ", true);
+      return;
+    }
+    dramaTitle = safeName(data.data?.title) || "subtitles";
+    if (processEpisodeList(data.data.setRespList)) {
+       showMessage("Tải dữ liệu API thành công!");
+    }
+  }
+
+  /**
+   * Xử lý dữ liệu từ tệp JSON (nút Xử lý tệp)
+   */
+  function processJsonFile(json) {
+    let episodes = [];
+    dramaTitle = "subtitles_from_file";
+
+    // 1. Cấu trúc dramaDetail (API)
+    if (json.data && json.data.radioDramaResp && json.data.radioDramaResp.setRespList) {
+      console.log("Phát hiện cấu trúc: API dramaDetail (có 'data')");
+      episodes = json.data.radioDramaResp.setRespList;
+      dramaTitle = (json.data.radioDramaResp.title);
+    }
+    // 2. Cấu trúc dramaDetail (Tệp ...221.json - cấu trúc phẳng hơn)
+    else if (json.radioDramaResp && json.radioDramaResp.setRespList) {
+       console.log("Phát hiện cấu trúc: Tệp dramaDetail (không có 'data')");
+       episodes = json.radioDramaResp.setRespList;
+       dramaTitle = (json.radioDramaResp.title);
+    }
+    // 3. Cấu trúc dramaSetSimpleList (Tệp dramaSetSimpleList.json)
+    else if (json.b && json.b.radioDramaSetList) {
+      console.log("Phát hiện cấu trúc: Tệp dramaSetSimpleList");
+      episodes = json.b.radioDramaSetList;
+      // Cố gắng tìm tiêu đề chung, nếu không, dùng tên mặc định
+      if(episodes.length > 0 && episodes[0].radioDramaResp && episodes[0].radioDramaResp.title){
+        dramaTitle = episodes[0].radioDramaResp.title;
+      }
+    } 
+    // 4. Nếu không khớp
+    else {
+      showMessage("Cấu trúc JSON không nhận dạng được (không tìm thấy setRespList hoặc radioDramaSetList).", true);
+      return;
+    }
+    
+    dramaTitle = safeName(dramaTitle); // Đảm bảo tên tệp an toàn
+    
+    if (processEpisodeList(episodes)) {
+       showMessage("Đã xử lý tệp JSON thành công!");
+    }
+  }
+
+
+  // Nút Tìm (API)
+  findButton.addEventListener("click",async()=>{
+    const dramaId = idInput.value.trim();
+    if(!dramaId) return showMessage("Vui lòng nhập ID kịch bản",true);
+    
+    resetUI(); // Đặt lại giao diện
+
+    findButton.disabled=true;buttonText.textContent="Đang tải...";loadingSpinner.classList.remove("hidden");
+    
+    const api=`https://www.kilamanbo.com/web_manbo/dramaDetail?dramaId=${dramaId}`;
+    const proxy=`https://vercel-proxy-hazel-delta.vercel.app/api/proxy?url=${encodeURIComponent(api)}`;
+    
+    try{
+      const res=await fetch(proxy);
+      if (!res.ok) {
+        throw new Error(`Lỗi máy chủ proxy: ${res.status}`);
+      }
+      const json=await res.json();
+      if (json.code !== 200 || !json.data) {
+        throw new Error(json.msg || "Không tìm thấy dữ liệu cho ID này");
+      }
+      
+      // Gọi hàm xử lý API
+      await processApiData(json);
+
+    }catch(e){
+      console.error(e);
+      showMessage("Lỗi khi tải dữ liệu: " + e.message, true);
+    }finally{
+      findButton.disabled=false;buttonText.textContent="Tìm phụ đề (Qua ID)";loadingSpinner.classList.add("hidden");
+    }
+  });
+
+  // Nút Xử lý tệp (JSON)
+  processJsonButton.addEventListener("click", () => {
+    const file = jsonFileInput.files[0];
+    if (!file) {
+      return showMessage("Vui lòng chọn một tệp JSON", true);
+    }
+
+    resetUI(); // Đặt lại giao diện
+
+    processJsonButton.disabled = true;
+    jsonButtonText.textContent = "Đang đọc...";
+    jsonLoadingSpinner.classList.remove("hidden");
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target.result;
+        const json = JSON.parse(content);
+        processJsonFile(json); // Gọi hàm xử lý JSON
+      } catch (e) {
+        showMessage("Lỗi đọc hoặc phân tích tệp JSON: " + e.message, true);
+      } finally {
+        processJsonButton.disabled = false;
+        jsonButtonText.textContent = "Xử lý tệp JSON";
+        jsonLoadingSpinner.classList.add("hidden");
+      }
+    };
+    reader.onerror = () => {
+       showMessage("Không thể đọc tệp", true);
+       processJsonButton.disabled = false;
+       jsonButtonText.textContent = "Xử lý tệp JSON";
+       jsonLoadingSpinner.classList.add("hidden");
+    };
+    reader.readAsText(file);
+  });
+
+
+  // THAY ĐỔI: ZIP LRC
+  downloadLrcZipButton.addEventListener("click",async(event)=>{
+    const selectedFiles = getSelectedFiles(); // Lấy file đã chọn
+    if(!selectedFiles.length) return showMessage("Vui lòng chọn ít nhất một file để nén",true);
+
+    const btn=event.currentTarget;
+    const txt=document.getElementById("lrcZipButtonText");
+    const spin=document.getElementById("lrcZipLoadingSpinner");
+    btn.disabled=true;txt.textContent="Đang nén .lrc...";spin.classList.remove("hidden");
+    const zip=new JSZip();
+    let filesAdded = 0;
+    
+    // Tải song song 5 file một lúc
+    const batchSize = 5;
+    for (let i = 0; i < selectedFiles.length; i += batchSize) {
+        const batch = selectedFiles.slice(i, i + batchSize);
+        await Promise.allSettled(batch.map(async (f) => {
+            const c = await fetchFile(f.url, f.title);
+            if (c) {
+                zip.file(safeName(f.title) + ".lrc", c);
+                filesAdded++;
+            }
+        }));
+        // Cập nhật tiến độ
+        txt.textContent = `Đang nén ${filesAdded}/${selectedFiles.length}...`;
+    }
+
+    if(filesAdded > 0){
+      const blob=await zip.generateAsync({type:"blob"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download=safeName(dramaTitle)+"_lrc.zip";
+      a.click();URL.revokeObjectURL(a.href);
+      showMessage(`Đã nén ${filesAdded} file .lrc thành công!`);
+    }else showMessage("Không thể tải được file .lrc nào.",true);
+    
+    btn.disabled=false;txt.textContent="Tải (.lrc) đã chọn";spin.classList.add("hidden");
+  });
+
+  // THAY ĐỔI: ZIP ASS
+  downloadAssZipButton.addEventListener("click",async(event)=>{
+    const selectedFiles = getSelectedFiles(); // Lấy file đã chọn
+    if(!selectedFiles.length) return showMessage("Vui lòng chọn ít nhất một file để chuyển đổi",true);
+
+    const btn=event.currentTarget;
+    const txt=document.getElementById("assZipButtonText");
+    const spin=document.getElementById("assZipLoadingSpinner");
+    btn.disabled=true;txt.textContent="Đang nén .ass...";spin.classList.remove("hidden");
+    const zip=new JSZip();
+    let filesAdded = 0;
+
+    // Tải song song 5 file một lúc
+    const batchSize = 5;
+     for (let i = 0; i < selectedFiles.length; i += batchSize) {
+        const batch = selectedFiles.slice(i, i + batchSize);
+        await Promise.allSettled(batch.map(async (f) => {
+            const c = await fetchFile(f.url, f.title);
+            if (c) {
+                zip.file(safeName(f.title) + ".ass", lrcToAss(c, f.title));
+                filesAdded++;
+            }
+        }));
+        // Cập nhật tiến độ
+        txt.textContent = `Đang nén ${filesAdded}/${selectedFiles.length}...`;
+    }
+
+    if(filesAdded > 0){
+      const blob=await zip.generateAsync({type:"blob"});
+      const a=document.createElement("a");
+      a.href=URL.createObjectURL(blob);
+      a.download=safeName(dramaTitle)+"_ass.zip";
+      a.click();URL.revokeObjectURL(a.href);
+      showMessage(`Đã nén ${filesAdded} file .ass thành công!`);
+    }else showMessage("Không thể tải được file .ass nào.",true);
+    
+    btn.disabled=false;txt.textContent="Tải (.ass) đã chọn";spin.classList.add("hidden");
+  });
+  </script>
+</body>
+</html>

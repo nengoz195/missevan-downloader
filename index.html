@@ -109,6 +109,8 @@
         background-color: rgba(255, 255, 255, 0.6); color: var(--text-secondary);
         border-radius: 99px; cursor: pointer;
         font-weight: 700; transition: var(--transition-fast); font-size: 0.95rem;
+        text-decoration: none; /* Thêm cho thẻ <a> */
+        display: inline-block; /* Thêm cho thẻ <a> */
     }
     .tab-btn:hover { background-color: #fff; color: var(--accent-end); transform: translateY(-2px); box-shadow: var(--shadow); }
     .tab-btn[aria-selected="true"] {
@@ -239,6 +241,8 @@
     <div class="tabs" role="tablist" aria-label="Điều hướng chính">
       <button class="tab-btn" role="tab" aria-selected="true" aria-controls="tab-downloader" id="btn-downloader">Missevan</button>
       <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-guide" id="btn-guide" tabindex="-1">Cài Script</button>
+      <!-- NÚT MỚI ĐƯỢC THÊM -->
+      <a href="Manbo.html" class="tab-btn">Manbo</a>
     </div>
 
     <!-- Nội dung Tab 1: Công cụ tải -->
@@ -602,7 +606,7 @@ VD: https://www.missevan.com/sound/12345678" aria-label="Nhiều URL"></textarea
       return loose ? (loose[1] || loose[2] || loose[3]) : null;
     }
 
-    async function fetchDanmakuXml(soundid) {
+async function fetchDanmakuXml(soundid) {
       const target = DANMAKU_GET_URL + soundid;
       const finalUrl = useProxy ? VERCEL_PROXY_URL + encodeURIComponent(target) : target;
       log(`Đang tải danmaku ID ${soundid}...`);
