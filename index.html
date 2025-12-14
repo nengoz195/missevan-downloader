@@ -212,6 +212,8 @@
       transition: var(--transition-fast); margin: 5px; 
       box-shadow: 0 4px 15px rgba(105, 199, 121, 0.25);
       display: inline-block;
+      min-width: 250px;
+      text-align: center;
     }
     .post-body .btn:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
     .post-body .img-container { margin: 20px 0; display: flex; flex-direction: column; align-items: center; gap: 15px; }
@@ -241,7 +243,6 @@
     <div class="tabs" role="tablist" aria-label="Điều hướng chính">
       <button class="tab-btn" role="tab" aria-selected="true" aria-controls="tab-downloader" id="btn-downloader">Missevan</button>
       <button class="tab-btn" role="tab" aria-selected="false" aria-controls="tab-guide" id="btn-guide" tabindex="-1">Cài Script</button>
-      <!-- NÚT MỚI ĐƯỢC THÊM -->
       <a href="Manbo.html" class="tab-btn">Manbo</a>
     </div>
 
@@ -300,10 +301,15 @@ VD: https://www.missevan.com/sound/12345678" aria-label="Nhiều URL"></textarea
               <img alt="Violentmonkey" src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEh3FuOZrryMg7OokhWDhIsS36xx71h9qCMBNt-b0eE4lrNCKQMdg11L4_CThyrMKn6Fo6A-OQCbPlNahSuOuqZxAvHM1ImrMOZI_83JfQ9t16ZcdgSUVPFSd60ZrEsAZ85Dd2aCz9oJ9-yptvFXnm2pkR4sxv30xCEFEY2icmawTg7Bmqb4SvpgxvUCTJU/s1600/526876332_1053506796931094_6967610342767934033_n.jpg" />
             </div><hr>
             <h2>2. Cài Script tải phụ đề</h2>
-            <p>Sau khi cài Violentmonkey, bấm vào các nút dưới đây để cài script tương ứng:</p>
+            <p>Sau khi cài Violentmonkey, bấm vào các nút dưới đây để cài script hoặc extension tương ứng:</p>
             <div class="img-container">
+              <!-- Missevan Scripts -->
               <a class="btn" href="https://github.com/nengoz195/missevan-downloader/raw/refs/heads/main/Missevan%20Downloader%20-%20Combined%20(Kitty%20Edition%20with%20Mode%204%20Sub%20and%20Homepage%20Images)-4.3.user.js" target="_blank">⚡ Cài Script Missevan</a>
+              <a class="btn" href="https://chromewebstore.google.com/detail/audio-drama-subtitle-load/mcplgieljenmliojmjehagendmalipgl?pli=1" target="_blank" style="background-image: linear-gradient(45deg, #FF6B6B, #EE5253);">🧩 Extension Load Sub Missevan</a>
+
+              <!-- Manbo Scripts -->
               <a class="btn" href="https://github.com/nengoz195/missevan-downloader/raw/refs/heads/main/Manbo%20Media%20Downloader%20(Cute%20Pink%20Panel%20Edition%20-%20Optimized%20Images)-3.2.--Ho%C3%A0nthi%E1%BB%87ns%E1%BB%ADal%E1%BB%97iGMAPI(x%C3%B3ab%E1%BB%8FGM_getResourceText).user.js" target="_blank">⚡ Cài Script Manbo</a>
+              <a class="btn" href="https://github.com/nengoz195/missevan-downloader/raw/refs/heads/main/KilaManbo%20Subtitle%20Overlay%20(Modern%20&%20Advanced)-2.0.0.user.js" target="_blank" style="background-image: linear-gradient(45deg, #9b59b6, #8e44ad);">🎨 Script Manbo Overlay</a>
             </div><hr>
             <h2>3. Truy cập Missevan / Kilamanbo</h2>
             <p>Mở trang kịch truyền thanh trên Missevan hoặc Kilamanbo, bạn sẽ thấy <span class="highlight">nút tải phụ đề</span> hiện ra ngay dưới trình phát âm thanh.</p>
