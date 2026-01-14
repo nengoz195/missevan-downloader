@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manbo Media Downloader (Fast Speed & Silent Headers)
 // @namespace    manbo.kilamanbo.media
-// @version      3.9.0 // Fix bộ đếm: Chỉ nhảy số khi bắt được Link/Content
+// @version      3.9.3 // Fix bộ đếm & Deduplicate: Ưu tiên file Hook khi trùng tên tập
 // @description  Tải phụ đề, ảnh, audio Manbo. Fix lỗi tải chậm và server chặn request.
 // @author       Thien Truong Dia Cuu
 // @match        https://kilamanbo.com/manbo/pc/detail*
@@ -28,7 +28,7 @@
     'use strict';
 
     // --- State Management ---
-    // subtitleMap: key=id, value={ id, title, lrcUrl, content }
+    // subtitleMap: key=id, value={ id, title, lrcUrl, content, isHooked }
     let subtitleMap = new Map();
     let accumulatedImages = new Set();
     let currentEpisodeLrcUrl = null;
@@ -272,12 +272,16 @@
                         const id = s.setIdStr || s.setId;
                         // Chỉ lưu nếu chưa có hoặc cập nhật thêm thông tin
                         if (!subtitleMap.has(id)) {
-                            subtitleMap.set(id, { id: id, title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl, content: null });
-                            if (s.setLrcUrl || id) newSubCount++;
+                            // isHooked: false vì đây là lấy từ List
+                            subtitleMap.set(id, { id: id, title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl, content: null, isHooked: false });
                         }
+                        
+                        // FIX: Đếm tổng số tập có trong danh sách API (dù có link hay chưa)
+                        if (id) newSubCount++;
+
                         if (s.setPic) accumulatedImages.add(s.setPic.split('?')[0]);
                     });
-                    if (newSubCount > 0) addLog(`Quét: ${newSubCount} tập (sẵn sàng ZIP).`, 'info');
+                    if (newSubCount > 0) addLog(`Tìm thấy: ${newSubCount} tập trong danh sách.`, 'info');
                 }
 
                 if (req.url.includes('dramaSetDetail')) {
@@ -290,12 +294,14 @@
 
                     if (data.setIdStr) {
                          const existing = subtitleMap.get(data.setIdStr) || {};
-                         // Cập nhật lại Map với Link mới nhất
+                         // Cập nhật lại Map với Link mới nhất.
+                         // isHooked: true vì đây là click chi tiết
                          subtitleMap.set(data.setIdStr, {
                              id: data.setIdStr,
                              title: title,
                              lrcUrl: data.setLrcUrl,
-                             content: existing.content // Giữ lại content nếu đã có
+                             content: existing.content, // Giữ lại content nếu đã có
+                             isHooked: true
                          });
                     }
                     if (data.setLrcUrl) addLog(`Đã bắt URL: ${title}`, 'success');
@@ -325,6 +331,7 @@
                          if (videoId && subtitleMap.has(videoId)) {
                              const item = subtitleMap.get(videoId);
                              item.content = txt; // Lưu content
+                             item.isHooked = true; // Chắc chắn là hooked
                              subtitleMap.set(videoId, item);
                              addLog(`-> Đã lưu nội dung cho tập: ${item.title}`, 'info');
                          }
@@ -419,20 +426,38 @@
         document.getElementById('zip-sub').onclick = async () => {
             const list = Array.from(subtitleMap.values());
             if (!list.length) { addLog("Danh sách trống!", 'warn'); return; }
-            addLog(`Đang tải ${list.length} phụ đề...`, 'info');
-            const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
+            addLog(`Đang xử lý ${list.length} tập...`, 'info');
 
+            // --- LỌC TRÙNG TÊN (Deduplication) ---
+            const uniqueMap = new Map();
+            list.forEach(item => {
+                const key = sanitize(item.title); // Dùng tên file làm khóa
+                if (!uniqueMap.has(key)) {
+                    uniqueMap.set(key, item);
+                } else {
+                    const existing = uniqueMap.get(key);
+                    // Nếu tập hiện tại là "Hooked" (vừa click xong) mà cái cũ không phải -> Ghi đè
+                    if (item.isHooked && !existing.isHooked) {
+                        uniqueMap.set(key, item);
+                    }
+                }
+            });
+            const finalList = Array.from(uniqueMap.values());
+            
+            if (finalList.length < list.length) {
+                addLog(`Đã lọc bỏ ${list.length - finalList.length} tập trùng tên (Ưu tiên Hook).`, 'warn');
+            }
+
+            const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
             let successCount = 0;
 
-            await runBatch(list, 10, async (s) => {
-                let content = s.content; // 1. Ưu tiên nội dung đã bắt được (lưu trong Map)
+            await runBatch(finalList, 10, async (s) => {
+                let content = s.content; 
 
-                // 2. Nếu chưa có nội dung, thử dùng Link đã Hook được (Click tay nhưng chưa tải nội dung)
                 if (!content && s.lrcUrl) {
                     try { content = await fetchFile(s.lrcUrl, 'text'); } catch (e) { console.warn(`URL Fail ${s.title}:`, e); }
                 }
 
-                // 3. Nếu vẫn chưa có gì (Chưa click vào bao giờ), mới dùng API (Fallback)
                 if (!content && s.id) {
                     try { content = await fetchLrcViaApi(s.id); } catch (e) { console.warn(`API Fail ${s.title}:`, e); }
                 }
@@ -450,7 +475,7 @@
 
             if (successCount > 0) {
                 download(await w.close(), `${sanitize(currentDramaTitle)}_Subs.zip`);
-                addLog(`Đã tải ZIP: ${successCount}/${list.length} file!`, 'success');
+                addLog(`Đã tải ZIP: ${successCount}/${finalList.length} file!`, 'success');
             } else {
                 addLog("Thất bại toàn bộ: Không lấy được nội dung nào!", 'error');
                 await w.close();
