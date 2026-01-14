@@ -3,7 +3,7 @@
 // @namespace   ttdc-kilamanbo-sub-ultimate
 // @version     3.1.0
 // @description Phiên bản nâng cấp: Hỗ trợ thêm file ASS, Giao diện Glassmorphism, Kéo thả file, Phím tắt.
-// @match       https://kilamanbo.com/*
+// @match       https://www.kilamanbo.com/*
 // @grant       GM_addStyle
 // @grant       GM_setValue
 // @grant       GM_getValue
