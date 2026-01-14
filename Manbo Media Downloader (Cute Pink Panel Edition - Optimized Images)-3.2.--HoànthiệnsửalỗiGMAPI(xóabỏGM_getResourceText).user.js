@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manbo Media Downloader (Fast Speed & Silent Headers)
 // @namespace    manbo.kilamanbo.media
-// @version      3.3.5 // Tối ưu tốc độ tải (Multi-thread)
+// @version      3.6.0 // Fix lỗi convert ASS (Hỗ trợ định dạng [HH:MM:SS.xx])
 // @description  Tải phụ đề, ảnh, audio Manbo. Fix lỗi tải chậm và server chặn request.
 // @author       Thien Truong Dia Cuu
 // @match        https://kilamanbo.com/manbo/pc/detail*
@@ -19,6 +19,8 @@
 // @run-at       document-start
 // @connect      img.kilamanbo.com
 // @connect      drama.hongrenshuo.com.cn
+// @connect      kilamanbo.com
+// @connect      manbo.kilakila.cn
 // @license      MIT
 // ==/UserScript==
 
@@ -29,6 +31,7 @@
     let subtitleMap = new Map();
     let accumulatedImages = new Set();
     let currentEpisodeLrcUrl = null;
+    let currentEpisodeLrcContent = null;
     let currentEpisodeTitle = 'Tập hiện tại';
     let currentDramaTitle = 'Manbo Drama';
     let realAudioUrl = null;
@@ -116,10 +119,31 @@
         });
     });
 
+    const fetchLrcViaApi = (id) => new Promise((res, rej) => {
+        GM_xmlhttpRequest({
+            method: "POST",
+            url: "/Activecard/getLrcContent",
+            headers: { "Content-Type": "application/x-www-form-urlencoded", "Referer": window.location.href, "Origin": window.location.origin },
+            data: "videoId=" + id,
+            onload: (r) => {
+                if (r.status !== 200) return rej("API Error " + r.status);
+                try {
+                    const json = JSON.parse(r.responseText);
+                    if (json && json.data) {
+                        if (json.data.lrcContent) res(json.data.lrcContent);
+                        else if (json.data.lrcUrl) res(fetchFile(json.data.lrcUrl, 'text'));
+                        else rej("No content in API");
+                    } else rej("Invalid API data");
+                } catch(e) { rej("Parse Error"); }
+            },
+            onerror: rej
+        });
+    });
+
     const download = (data, name) => {
         const a = document.createElement("a");
         a.download = name;
-        a.href = typeof data === "string" ? data : URL.createObjectURL(data);
+        a.href = typeof data === "string" ? "data:text/plain;charset=utf-8," + encodeURIComponent(data) : URL.createObjectURL(data);
         a.style.display = "none";
         document.body.appendChild(a);
         a.click();
@@ -127,22 +151,77 @@
         if (typeof data !== "string") setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     };
 
+    // --- UNIVERSAL ASS CONVERTER (NEW) ---
     function convertToAss(lrc) {
         let ass = `[Script Info]\nTitle: Manbo\nScriptType: v4.00+\nPlayResX:1280\nPlayResY:720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,42,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,20,20,20,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
+
+        let parsedLines = [];
         const lines = lrc.split('\n');
-        lines.forEach((line, i) => {
-            const m = line.match(/\[(\d+):(\d+)\.(\d+)\](.*)/);
+
+        // Hàm helper để tạo chuỗi thời gian chuẩn ASS (H:MM:SS.cs) từ tổng số giây
+        const formatAssTime = (totalSec) => {
+            const h = Math.floor(totalSec / 3600);
+            const m = Math.floor((totalSec % 3600) / 60);
+            const s = Math.floor(totalSec % 60);
+            const cs = Math.floor((totalSec % 1) * 100);
+            return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${cs.toString().padStart(2, '0')}`;
+        };
+
+        lines.forEach(line => {
+            // Regex vạn năng: Bắt mọi thứ trong [] rồi xử lý sau
+            const m = line.match(/\[([\d:.]+)\](.*)/);
             if (m) {
-                const s = `0:${m[1]}:${m[2]}.${m[3].substring(0,2)}`;
-                const nm = lines[i+1]?.match(/\[(\d+):(\d+)\.(\d+)\]/);
-                const e = nm ? `0:${nm[1]}:${nm[2]}.${nm[3].substring(0,2)}` : "0:59:59.99";
-                ass += `Dialogue: 0,${s},${e},Default,,0,0,0,,${m[4].trim()}\n`;
+                const timeStr = m[1];
+                const text = m[2].trim();
+
+                // Tách thời gian bằng dấu : hoặc .
+                // Ví dụ: 00:00:00.50 -> ["00", "00", "00", "50"] (4 phần)
+                // Ví dụ: 00:00.50    -> ["00", "00", "50"] (3 phần)
+                let parts = timeStr.split(/[:.]/);
+                let seconds = 0;
+                let ms = 0;
+
+                // Xử lý linh hoạt độ dài
+                if (parts.length === 4) {
+                    // HH:MM:SS.xx
+                    seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
+                    ms = parseInt(parts[3].padEnd(2, '0').substring(0, 2)); // Lấy 2 chữ số đầu của ms
+                } else if (parts.length === 3) {
+                    // MM:SS.xx
+                    seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+                    ms = parseInt(parts[2].padEnd(2, '0').substring(0, 2));
+                } else {
+                    return; // Bỏ qua nếu định dạng lạ
+                }
+
+                const rawTime = seconds + (ms / 100);
+                parsedLines.push({
+                    startTime: formatAssTime(rawTime),
+                    rawTime: rawTime,
+                    text: text
+                });
             }
         });
+
+        parsedLines.sort((a, b) => a.rawTime - b.rawTime);
+
+        parsedLines.forEach((item, i) => {
+            if (item.text === '') return;
+
+            let endTime;
+            if (i < parsedLines.length - 1) {
+                endTime = parsedLines[i + 1].startTime;
+            } else {
+                // Dòng cuối cộng 5s
+                endTime = formatAssTime(item.rawTime + 5);
+            }
+
+            ass += `Dialogue: 0,${item.startTime},${endTime},Default,,0,0,0,,${item.text}\n`;
+        });
+
         return ass;
     }
 
-    // --- Helper: Concurrency Limit (Tải đa luồng) ---
     async function runBatch(items, limit, fn, onProgress) {
         let results = [];
         let executing = [];
@@ -164,7 +243,7 @@
     function updateCounters() {
         const subC = document.getElementById('stat-sub');
         const imgC = document.getElementById('stat-img');
-        if (subC) subC.innerText = Array.from(subtitleMap.values()).filter(s => s.lrcUrl).length;
+        if (subC) subC.innerText = Array.from(subtitleMap.values()).filter(s => s.lrcUrl || s.id).length;
         if (imgC) imgC.innerText = accumulatedImages.size;
     }
 
@@ -197,7 +276,6 @@
         }, true);
     }
 
-    // --- API Hook ---
     ajaxHooker.hook(req => {
         req.response = res => {
             if (!res.responseText) return;
@@ -205,44 +283,52 @@
                 const json = JSON.parse(res.responseText);
                 const data = json?.data;
                 if (!data) return;
+
                 const main = data.radioDramaResp || (req.url.includes('dramaDetail') ? data : null);
                 if (main) {
                     currentDramaTitle = main.title || currentDramaTitle;
                     if (main.coverPic) accumulatedImages.add(main.coverPic.split('?')[0]);
                     let newSubCount = 0;
                     (main.setRespList || []).forEach(s => {
-                        const id = s.setIdStr;
-                        if (!subtitleMap.has(id) || (!subtitleMap.get(id).lrcUrl && s.setLrcUrl)) {
-                            subtitleMap.set(id, { title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl });
-                            if (s.setLrcUrl) newSubCount++;
+                        const id = s.setIdStr || s.setId;
+                        if (!subtitleMap.has(id)) {
+                            subtitleMap.set(id, { id: id, title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl });
+                            if (s.setLrcUrl || id) newSubCount++;
                         }
                         if (s.setPic) accumulatedImages.add(s.setPic.split('?')[0]);
                     });
-                    if (newSubCount > 0) addLog(`Quét: ${newSubCount} phụ đề mới.`, 'info');
+                    if (newSubCount > 0) addLog(`Quét: ${newSubCount} tập (sẵn sàng ZIP).`, 'info');
                 }
+
                 if (req.url.includes('dramaSetDetail')) {
                     const title = data.setTitle || data.setName || 'Unknown';
                     currentEpisodeTitle = title;
-                    currentEpisodeLrcUrl = data.setLrcUrl;
+                    currentEpisodeLrcUrl = data.setLrcUrl || null;
+                    currentEpisodeLrcContent = null;
                     realAudioUrl = null;
                     updateAudioButton();
-                    if (data.setIdStr && data.setLrcUrl) {
-                        if (!subtitleMap.has(data.setIdStr) || !subtitleMap.get(data.setIdStr).lrcUrl) {
-                            subtitleMap.set(data.setIdStr, { title: title, lrcUrl: data.setLrcUrl });
-                            addLog(`Đã bắt data: ${title}`, 'success');
-                        }
-                    } else addLog(`Đang xem: ${title}`, 'info');
-                    const addImg = (u) => { const cl = u.split('?')[0]; if (!accumulatedImages.has(cl)) accumulatedImages.add(cl); };
+
+                    if (data.setIdStr) subtitleMap.set(data.setIdStr, { id: data.setIdStr, title: title, lrcUrl: data.setLrcUrl });
+                    if (data.setLrcUrl) addLog(`Đã bắt URL: ${title}`, 'success');
+
+                    const addImg = (u) => { if(u) { const cl = u.split('?')[0]; if (!accumulatedImages.has(cl)) accumulatedImages.add(cl); }};
                     if (data.setPic) addImg(data.setPic);
                     if (data.backgroundImgUrl) addImg(data.backgroundImgUrl);
                     (data.picUrlSet || []).forEach(u => addImg(u));
+                }
+
+                if (req.url.includes('getLrcContent')) {
+                     if (data.lrcUrl) currentEpisodeLrcUrl = data.lrcUrl;
+                     else if (typeof data === 'string' || data.lrcContent) {
+                         currentEpisodeLrcContent = data.lrcContent || data;
+                         addLog('Đã bắt được NỘI DUNG LRC trực tiếp!', 'success');
+                     }
                 }
                 updateCounters();
             } catch (e) {}
         };
     });
 
-    // --- Drag Logic ---
     function makeDraggable(el, handle) {
         let pos1=0,pos2=0,pos3=0,pos4=0;
         if(handle) handle.onmousedown=dragMouseDown; else el.onmousedown=dragMouseDown;
@@ -251,7 +337,6 @@
         function closeDragElement(){document.onmouseup=null;document.onmousemove=null;}
     }
 
-    // --- UI ---
     function initUI() {
         if (document.getElementById('manbo-panel')) return;
         const panel = document.createElement('div');
@@ -265,16 +350,16 @@
                 <div class="stat-card"><span class="stat-num" id="stat-img">0</span><span class="stat-label">Hình ảnh</span></div>
             </div>
             <div id="log-box" class="log-container">
-                <div class="log-entry"><span class="log-time">System</span><span class="log-info">Sẵn sàng! Hãy nhấn play để bắt audio.</span></div>
+                <div class="log-entry"><span class="log-time">System</span><span class="log-info">Sẵn sàng!</span></div>
             </div>
             <div class="controls-area">
-                <div class="section-title">Tập hiện tại</div>
+                <div class="section-title">Tập hiện tại (Chỉ dùng Hook)</div>
                 <div class="btn-group">
                     <button class="m-btn btn-outline" id="dl-lrc">💬 LRC</button>
                     <button class="m-btn btn-outline" id="dl-ass">📝 ASS</button>
                 </div>
                 <button class="m-btn btn-outline btn-full btn-disabled" id="cp-audio">🎧 Bấm play để bắt audio</button>
-                <div class="section-title">Tải toàn bộ (ZIP)</div>
+                <div class="section-title">Tải toàn bộ (Dùng API + Hook)</div>
                 <button class="m-btn btn-fill btn-full" id="zip-sub">📦 Tải tất cả phụ đề</button>
                 <button class="m-btn btn-fill btn-full" id="zip-img">📸 Tải tất cả ảnh</button>
             </div>
@@ -287,16 +372,35 @@
         makeDraggable(panel, document.getElementById('panel-header'));
         document.getElementById('hide-p').onclick = () => panel.classList.add('collapsed');
 
+        // --- DL LRC LẺ: HOOK ONLY ---
         document.getElementById('dl-lrc').onclick = async () => {
-            if (!currentEpisodeLrcUrl) { addLog("Chưa có link LRC!", 'error'); return; }
-            download(await fetchFile(currentEpisodeLrcUrl), `${sanitize(currentEpisodeTitle)}.lrc`);
-            addLog("Tải LRC xong!", 'success');
+            try {
+                let content = currentEpisodeLrcContent;
+                if (!content) {
+                    if (!currentEpisodeLrcUrl) { addLog("Thiếu dữ liệu Hook! Hãy tải lại hoặc chọn tập.", 'error'); return; }
+                    addLog(`Tải từ URL Hook: ${currentEpisodeLrcUrl}...`, 'info');
+                    content = await fetchFile(currentEpisodeLrcUrl, 'text');
+                } else addLog("Sử dụng nội dung từ Hook.", 'info');
+
+                download(content, `${sanitize(currentEpisodeTitle)}.lrc`);
+                addLog("Tải LRC xong!", 'success');
+            } catch (e) { addLog(`Lỗi: ${e}`, 'error'); }
         };
 
+        // --- DL ASS LẺ: HOOK ONLY (KHÔNG GỌI API) ---
         document.getElementById('dl-ass').onclick = async () => {
-            if (!currentEpisodeLrcUrl) { addLog("Chưa có link LRC!", 'error'); return; }
-            download(new Blob([convertToAss(await fetchFile(currentEpisodeLrcUrl, 'text'))]), `${sanitize(currentEpisodeTitle)}.ass`);
-            addLog("Tải ASS xong!", 'success');
+            try {
+                let content = currentEpisodeLrcContent;
+                if (!content) {
+                    if (!currentEpisodeLrcUrl) { addLog("Thiếu dữ liệu Hook! Hãy tải lại hoặc chọn tập.", 'error'); return; }
+                    addLog(`Tải từ URL Hook: ${currentEpisodeLrcUrl}...`, 'info');
+                    content = await fetchFile(currentEpisodeLrcUrl, 'text');
+                } else addLog("Sử dụng nội dung từ Hook.", 'info');
+
+                const assContent = convertToAss(content);
+                download(assContent, `${sanitize(currentEpisodeTitle)}.ass`);
+                addLog("Tải ASS xong!", 'success');
+            } catch (e) { addLog(`Lỗi tải ASS: ${e}`, 'error'); }
         };
 
         document.getElementById('cp-audio').onclick = () => {
@@ -307,24 +411,28 @@
             .catch((e) => { addLog(`Lỗi: ${e}`, 'error'); GM_setClipboard(realAudioUrl); });
         };
 
-        // --- OPTIMIZED ZIP DOWNLOAD ---
         document.getElementById('zip-sub').onclick = async () => {
-            const list = Array.from(subtitleMap.values()).filter(s => s.lrcUrl);
+            const list = Array.from(subtitleMap.values());
             if (!list.length) { addLog("Danh sách trống!", 'warn'); return; }
-            addLog(`Đang tải ${list.length} phụ đề (Siêu tốc)...`, 'info');
+            addLog(`Đang tải ${list.length} phụ đề...`, 'info');
             const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
 
-            // Tải 20 file cùng lúc
-            await runBatch(list, 20, async (s) => {
-                try {
-                    const content = await fetchFile(s.lrcUrl, 'text');
+            await runBatch(list, 10, async (s) => {
+                let content = null;
+                // ZIP thì cần dùng API để quét hết
+                if (s.id) {
+                    try { content = await fetchLrcViaApi(s.id); } catch (e) { }
+                }
+                if (!content && s.lrcUrl) {
+                    try { content = await fetchFile(s.lrcUrl, 'text'); } catch (e) { console.warn(`Failed ${s.title}`, e); }
+                }
+                if (content) {
                     await w.add(`${sanitize(s.title)}.lrc`, new zip.TextReader(content));
-                } catch(e) { console.error(e); }
+                }
             }, (done, total) => {
                 const percent = Math.floor((done/total)*100);
                 addLog(`Sub: ${done}/${total} (${percent}%)`, 'info', true);
             });
-
             download(await w.close(), `${sanitize(currentDramaTitle)}_Subs.zip`);
             addLog("Đã tải ZIP phụ đề!", 'success');
         };
@@ -334,12 +442,9 @@
             if (!list.length) { addLog("Không có ảnh!", 'warn'); return; }
             addLog(`Bắt đầu tải ${list.length} ảnh...`, 'info');
             const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
-
-            // Tải 5 ảnh cùng lúc để tránh nghẽn mạng
             await runBatch(list, 5, async (url) => {
                 try {
                     const blob = await fetchFile(url, 'blob');
-                    // Lấy tên file từ URL hoặc đặt tên ngẫu nhiên
                     const fname = url.substring(url.lastIndexOf('/')+1).split('?')[0] || `img_${Math.random()}.jpg`;
                     await w.add(fname, new zip.BlobReader(blob));
                 } catch(e) {}
@@ -347,12 +452,10 @@
                 const percent = Math.floor((done/total)*100);
                  addLog(`Tiến độ: ${done}/${total} (${percent}%)`, 'info', true);
             });
-
             download(await w.close(), `${sanitize(currentDramaTitle)}_Images.zip`);
             addLog("Đã tải ZIP ảnh xong!", 'success');
         };
     }
-
     initAudioSniffer();
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initUI); else initUI();
 })();
