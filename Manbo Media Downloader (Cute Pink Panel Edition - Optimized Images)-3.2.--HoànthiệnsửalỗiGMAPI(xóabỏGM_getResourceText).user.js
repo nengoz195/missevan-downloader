@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Manbo Media Downloader (Fast Speed & Silent Headers)
+// @name         Manbo Media Downloader (Fast Speed & Silent Headers) - Fixed Scan
 // @namespace    manbo.kilamanbo.media
-// @version      3.9.3 // Fix bộ đếm & Deduplicate: Ưu tiên file Hook khi trùng tên tập
-// @description  Tải phụ đề, ảnh, audio Manbo. Fix lỗi tải chậm và server chặn request.
+// @version      3.9.4 // Fix bộ đếm 0: Thêm tính năng quét dữ liệu trang (Backup Scan)
+// @description  Tải phụ đề, ảnh, audio Manbo. Fix lỗi không bắt được link khi chuyển máy.
 // @author       Thien Truong Dia Cuu
 // @match        https://kilamanbo.com/manbo/pc/detail*
 // @match        https://manbo.kilakila.cn/manbo/pc/detail*
@@ -16,6 +16,7 @@
 // @grant        GM_addStyle
 // @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
+// @grant        unsafeWindow
 // @run-at       document-start
 // @connect      img.kilamanbo.com
 // @connect      drama.hongrenshuo.com.cn
@@ -28,7 +29,6 @@
     'use strict';
 
     // --- State Management ---
-    // subtitleMap: key=id, value={ id, title, lrcUrl, content, isHooked }
     let subtitleMap = new Map();
     let accumulatedImages = new Set();
     let currentEpisodeLrcUrl = null;
@@ -47,7 +47,7 @@
             border: 1px solid rgba(255, 255, 255, 0.6);
             border-radius: 16px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
-            z-index: 9999; font-family: 'Nunito', sans-serif;
+            z-index: 999999; font-family: 'Nunito', sans-serif;
             padding: 16px;
             transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), opacity 0.3s;
             color: #444; display: flex; flex-direction: column; max-height: 85vh;
@@ -78,6 +78,8 @@
         .btn-fill { background: linear-gradient(135deg, #ff8fab, #ff4d94); color: white; box-shadow: 0 4px 10px rgba(255, 77, 148, 0.2); }
         .btn-fill:hover { transform: translateY(-1px); box-shadow: 0 6px 12px rgba(255, 77, 148, 0.3); }
         .btn-full { width: 100%; margin-bottom: 6px; }
+        .btn-warning { background: #fff3cd; color: #856404; border: 1px solid #ffeeba; }
+        .btn-warning:hover { background: #ffe8a1; }
         .btn-disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(1); }
         .log-container::-webkit-scrollbar { width: 4px; }
         .log-container::-webkit-scrollbar-thumb { background: #ffb3c6; border-radius: 2px; }
@@ -157,7 +159,6 @@
         if (typeof data !== "string") setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     };
 
-    // --- UNIVERSAL ASS CONVERTER ---
     function convertToAss(lrc) {
         let ass = `[Script Info]\nTitle: Manbo\nScriptType: v4.00+\nPlayResX:1280\nPlayResY:720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,42,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,20,20,20,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
         let parsedLines = [];
@@ -216,11 +217,9 @@
         return Promise.all(results);
     }
 
-    // --- FIX: Chỉ đếm những tập đã CÓ Link hoặc Content ---
     function updateCounters() {
         const subC = document.getElementById('stat-sub');
         const imgC = document.getElementById('stat-img');
-        // Filter bỏ những tập chỉ có ID (chưa hook được link/content)
         if (subC) subC.innerText = Array.from(subtitleMap.values()).filter(s => s.lrcUrl || s.content).length;
         if (imgC) imgC.innerText = accumulatedImages.size;
     }
@@ -238,6 +237,148 @@
         }
     }
 
+    // --- NEW: BACKUP SCANNER (Quét dữ liệu trang khi Hook thất bại) ---
+    function scanPageData() {
+        addLog("Đang quét dữ liệu trang (Backup)...", "info");
+        let foundCount = 0;
+        const win = unsafeWindow || window;
+
+        const processDrama = (drama) => {
+            if (!drama || !drama.setRespList) return;
+            if (drama.title || drama.name) currentDramaTitle = drama.title || drama.name;
+            if (drama.coverPic) accumulatedImages.add(drama.coverPic.split('?')[0]);
+
+            drama.setRespList.forEach(s => {
+                const id = s.setIdStr || s.setId;
+                if (id) {
+                    if (!subtitleMap.has(id)) {
+                        subtitleMap.set(id, {
+                            id: id,
+                            title: s.setTitle || s.setName || 'Tập ' + s.setNo,
+                            lrcUrl: s.setLrcUrl,
+                            content: null,
+                            isHooked: false // Đánh dấu là từ Scan, không phải Hook trực tiếp
+                        });
+                        foundCount++;
+                    } else {
+                        // Cập nhật thông tin nếu thiếu
+                        const exist = subtitleMap.get(id);
+                        if (!exist.lrcUrl && s.setLrcUrl) {
+                             exist.lrcUrl = s.setLrcUrl;
+                             subtitleMap.set(id, exist);
+                        }
+                    }
+                }
+                if (s.setPic) accumulatedImages.add(s.setPic.split('?')[0]);
+            });
+        };
+
+        // 1. Quét Vue/Nuxt (__NUXT__)
+        try {
+            if (win.__NUXT__ && win.__NUXT__.data) {
+                win.__NUXT__.data.forEach(d => {
+                    if (d) {
+                        if (d.radioDramaResp) processDrama(d.radioDramaResp);
+                        if (d.dramaDetail) processDrama(d.dramaDetail);
+                    }
+                });
+            }
+        } catch (e) { console.error("Scan NUXT fail", e); }
+
+        // 2. Quét biến Global khác (tùy trang)
+        try {
+            // Logic quét thủ công HTML nếu cần, nhưng thường NUXT là đủ
+            if (foundCount === 0) {
+                 // Thử quét __INITIAL_STATE__ nếu có
+                 if (win.__INITIAL_STATE__) {
+                     // Parse sơ bộ
+                 }
+            }
+        } catch(e) {}
+
+        if (foundCount > 0) {
+            addLog(`Backup: Tìm thấy ${foundCount} tập từ trang!`, "success");
+            updateCounters();
+        } else {
+            addLog("Không tìm thấy dữ liệu backup. Hãy F5 thử lại!", "warn");
+        }
+    }
+
+    // --- MAIN HOOKS ---
+    ajaxHooker.hook(req => {
+        req.response = res => {
+            if (!res.responseText) return;
+            try {
+                const json = JSON.parse(res.responseText);
+                const data = json?.data;
+                if (!data) return;
+
+                const main = data.radioDramaResp || (req.url.includes('dramaDetail') ? data : null);
+                if (main) {
+                    currentDramaTitle = main.title || currentDramaTitle;
+                    if (main.coverPic) accumulatedImages.add(main.coverPic.split('?')[0]);
+                    let newSubCount = 0;
+                    (main.setRespList || []).forEach(s => {
+                        const id = s.setIdStr || s.setId;
+                        if (!subtitleMap.has(id)) {
+                            subtitleMap.set(id, { id: id, title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl, content: null, isHooked: false });
+                        }
+                        if (id) newSubCount++;
+                        if (s.setPic) accumulatedImages.add(s.setPic.split('?')[0]);
+                    });
+                    if (newSubCount > 0) addLog(`Hook: Tìm thấy ${newSubCount} tập.`, 'info');
+                }
+
+                if (req.url.includes('dramaSetDetail')) {
+                    const title = data.setTitle || data.setName || 'Unknown';
+                    currentEpisodeTitle = title;
+                    currentEpisodeLrcUrl = data.setLrcUrl || null;
+                    currentEpisodeLrcContent = null;
+                    realAudioUrl = null;
+                    updateAudioButton();
+
+                    if (data.setIdStr) {
+                         const existing = subtitleMap.get(data.setIdStr) || {};
+                         subtitleMap.set(data.setIdStr, {
+                             id: data.setIdStr,
+                             title: title,
+                             lrcUrl: data.setLrcUrl,
+                             content: existing.content,
+                             isHooked: true
+                         });
+                    }
+                    if (data.setLrcUrl) addLog(`Đã bắt URL: ${title}`, 'success');
+                    const addImg = (u) => { if(u) { const cl = u.split('?')[0]; if (!accumulatedImages.has(cl)) accumulatedImages.add(cl); }};
+                    if (data.setPic) addImg(data.setPic);
+                    if (data.backgroundImgUrl) addImg(data.backgroundImgUrl);
+                    (data.picUrlSet || []).forEach(u => addImg(u));
+                }
+
+                if (req.url.includes('getLrcContent')) {
+                     let videoId = null;
+                     if (req.data) {
+                         const match = req.data.match(/videoId=([^&]+)/);
+                         if (match) videoId = match[1];
+                     }
+                     if (data.lrcUrl) currentEpisodeLrcUrl = data.lrcUrl;
+                     if (typeof data === 'string' || data.lrcContent) {
+                         const txt = data.lrcContent || data;
+                         currentEpisodeLrcContent = txt;
+                         addLog('Đã bắt NỘI DUNG LRC trực tiếp!', 'success');
+                         if (videoId && subtitleMap.has(videoId)) {
+                             const item = subtitleMap.get(videoId);
+                             item.content = txt;
+                             item.isHooked = true;
+                             subtitleMap.set(videoId, item);
+                             addLog(`-> Đã lưu nội dung: ${item.title}`, 'info');
+                         }
+                     }
+                }
+                updateCounters();
+            } catch (e) {}
+        };
+    });
+
     function initAudioSniffer() {
         window.addEventListener('play', (e) => {
             const target = e.target;
@@ -254,94 +395,6 @@
         }, true);
     }
 
-    // --- HOOKS: Cập nhật dữ liệu vào Map để dùng cho ZIP ---
-    ajaxHooker.hook(req => {
-        req.response = res => {
-            if (!res.responseText) return;
-            try {
-                const json = JSON.parse(res.responseText);
-                const data = json?.data;
-                if (!data) return;
-
-                const main = data.radioDramaResp || (req.url.includes('dramaDetail') ? data : null);
-                if (main) {
-                    currentDramaTitle = main.title || currentDramaTitle;
-                    if (main.coverPic) accumulatedImages.add(main.coverPic.split('?')[0]);
-                    let newSubCount = 0;
-                    (main.setRespList || []).forEach(s => {
-                        const id = s.setIdStr || s.setId;
-                        // Chỉ lưu nếu chưa có hoặc cập nhật thêm thông tin
-                        if (!subtitleMap.has(id)) {
-                            // isHooked: false vì đây là lấy từ List
-                            subtitleMap.set(id, { id: id, title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl, content: null, isHooked: false });
-                        }
-                        
-                        // FIX: Đếm tổng số tập có trong danh sách API (dù có link hay chưa)
-                        if (id) newSubCount++;
-
-                        if (s.setPic) accumulatedImages.add(s.setPic.split('?')[0]);
-                    });
-                    if (newSubCount > 0) addLog(`Tìm thấy: ${newSubCount} tập trong danh sách.`, 'info');
-                }
-
-                if (req.url.includes('dramaSetDetail')) {
-                    const title = data.setTitle || data.setName || 'Unknown';
-                    currentEpisodeTitle = title;
-                    currentEpisodeLrcUrl = data.setLrcUrl || null;
-                    currentEpisodeLrcContent = null;
-                    realAudioUrl = null;
-                    updateAudioButton();
-
-                    if (data.setIdStr) {
-                         const existing = subtitleMap.get(data.setIdStr) || {};
-                         // Cập nhật lại Map với Link mới nhất.
-                         // isHooked: true vì đây là click chi tiết
-                         subtitleMap.set(data.setIdStr, {
-                             id: data.setIdStr,
-                             title: title,
-                             lrcUrl: data.setLrcUrl,
-                             content: existing.content, // Giữ lại content nếu đã có
-                             isHooked: true
-                         });
-                    }
-                    if (data.setLrcUrl) addLog(`Đã bắt URL: ${title}`, 'success');
-
-                    const addImg = (u) => { if(u) { const cl = u.split('?')[0]; if (!accumulatedImages.has(cl)) accumulatedImages.add(cl); }};
-                    if (data.setPic) addImg(data.setPic);
-                    if (data.backgroundImgUrl) addImg(data.backgroundImgUrl);
-                    (data.picUrlSet || []).forEach(u => addImg(u));
-                }
-
-                if (req.url.includes('getLrcContent')) {
-                     // Parse ID từ Request payload để biết là tập nào
-                     let videoId = null;
-                     if (req.data) {
-                         const match = req.data.match(/videoId=([^&]+)/);
-                         if (match) videoId = match[1];
-                     }
-
-                     if (data.lrcUrl) currentEpisodeLrcUrl = data.lrcUrl;
-
-                     if (typeof data === 'string' || data.lrcContent) {
-                         const txt = data.lrcContent || data;
-                         currentEpisodeLrcContent = txt;
-                         addLog('Đã bắt được NỘI DUNG LRC trực tiếp!', 'success');
-
-                         // CỰC KỲ QUAN TRỌNG: Lưu nội dung vào Map để ZIP dùng luôn
-                         if (videoId && subtitleMap.has(videoId)) {
-                             const item = subtitleMap.get(videoId);
-                             item.content = txt; // Lưu content
-                             item.isHooked = true; // Chắc chắn là hooked
-                             subtitleMap.set(videoId, item);
-                             addLog(`-> Đã lưu nội dung cho tập: ${item.title}`, 'info');
-                         }
-                     }
-                }
-                updateCounters();
-            } catch (e) {}
-        };
-    });
-
     function makeDraggable(el, handle) {
         let pos1=0,pos2=0,pos3=0,pos4=0;
         if(handle) handle.onmousedown=dragMouseDown; else el.onmousedown=dragMouseDown;
@@ -356,23 +409,24 @@
         panel.id = 'manbo-panel';
         panel.innerHTML = `
             <div class="panel-header" id="panel-header">
-                <div class="panel-title">📜 Manbo Log</div><button class="close-btn" id="hide-p">✖</button>
+                <div class="panel-title">📜 Manbo Fix v3.9.4</div><button class="close-btn" id="hide-p">✖</button>
             </div>
             <div class="stats-grid">
                 <div class="stat-card"><span class="stat-num" id="stat-sub">0</span><span class="stat-label">Phụ đề</span></div>
                 <div class="stat-card"><span class="stat-num" id="stat-img">0</span><span class="stat-label">Hình ảnh</span></div>
             </div>
             <div id="log-box" class="log-container">
-                <div class="log-entry"><span class="log-time">System</span><span class="log-info">Sẵn sàng!</span></div>
+                <div class="log-entry"><span class="log-time">System</span><span class="log-info">Sẵn sàng (v3.9.4)</span></div>
             </div>
             <div class="controls-area">
-                <div class="section-title">Tập hiện tại (Chỉ dùng Hook)</div>
+                <button class="m-btn btn-warning btn-full" id="btn-scan">🔄 Quét lại dữ liệu (Backup)</button>
+                <div class="section-title">Tập hiện tại</div>
                 <div class="btn-group">
                     <button class="m-btn btn-outline" id="dl-lrc">💬 LRC</button>
                     <button class="m-btn btn-outline" id="dl-ass">📝 ASS</button>
                 </div>
                 <button class="m-btn btn-outline btn-full btn-disabled" id="cp-audio">🎧 Bấm play để bắt audio</button>
-                <div class="section-title">Tải toàn bộ (Ưu tiên Hook)</div>
+                <div class="section-title">Tải toàn bộ</div>
                 <button class="m-btn btn-fill btn-full" id="zip-sub">📦 Tải tất cả phụ đề</button>
                 <button class="m-btn btn-fill btn-full" id="zip-img">📸 Tải tất cả ảnh</button>
             </div>
@@ -385,15 +439,19 @@
         makeDraggable(panel, document.getElementById('panel-header'));
         document.getElementById('hide-p').onclick = () => panel.classList.add('collapsed');
 
+        // Gán sự kiện cho nút Scan mới
+        document.getElementById('btn-scan').onclick = () => {
+             scanPageData();
+        };
+
         document.getElementById('dl-lrc').onclick = async () => {
             try {
                 let content = currentEpisodeLrcContent;
                 if (!content) {
-                    if (!currentEpisodeLrcUrl) { addLog("Thiếu dữ liệu Hook! Hãy tải lại hoặc chọn tập.", 'error'); return; }
-                    addLog(`Tải từ URL Hook: ${currentEpisodeLrcUrl}...`, 'info');
+                    if (!currentEpisodeLrcUrl) { addLog("Thiếu dữ liệu! Hãy tải lại trang.", 'error'); return; }
+                    addLog(`Tải từ URL: ${currentEpisodeLrcUrl}...`, 'info');
                     content = await fetchFile(currentEpisodeLrcUrl, 'text');
-                } else addLog("Sử dụng nội dung từ Hook.", 'info');
-
+                } else addLog("Sử dụng nội dung Cache.", 'info');
                 download(content, `${sanitize(currentEpisodeTitle)}.lrc`);
                 addLog("Tải LRC xong!", 'success');
             } catch (e) { addLog(`Lỗi: ${e}`, 'error'); }
@@ -403,11 +461,10 @@
             try {
                 let content = currentEpisodeLrcContent;
                 if (!content) {
-                    if (!currentEpisodeLrcUrl) { addLog("Thiếu dữ liệu Hook! Hãy tải lại hoặc chọn tập.", 'error'); return; }
-                    addLog(`Tải từ URL Hook: ${currentEpisodeLrcUrl}...`, 'info');
+                    if (!currentEpisodeLrcUrl) { addLog("Thiếu dữ liệu! Hãy tải lại trang.", 'error'); return; }
+                    addLog(`Tải từ URL: ${currentEpisodeLrcUrl}...`, 'info');
                     content = await fetchFile(currentEpisodeLrcUrl, 'text');
-                } else addLog("Sử dụng nội dung từ Hook.", 'info');
-
+                } else addLog("Sử dụng nội dung Cache.", 'info');
                 const assContent = convertToAss(content);
                 download(assContent, `${sanitize(currentEpisodeTitle)}.ass`);
                 addLog("Tải ASS xong!", 'success');
@@ -422,51 +479,38 @@
             .catch((e) => { addLog(`Lỗi: ${e}`, 'error'); GM_setClipboard(realAudioUrl); });
         };
 
-        // --- CƠ CHẾ MỚI: Ưu tiên dữ liệu đã Hook (Click tay) trước ---
         document.getElementById('zip-sub').onclick = async () => {
             const list = Array.from(subtitleMap.values());
-            if (!list.length) { addLog("Danh sách trống!", 'warn'); return; }
+            if (!list.length) { addLog("Danh sách trống! Hãy ấn 'Quét lại'.", 'warn'); return; }
             addLog(`Đang xử lý ${list.length} tập...`, 'info');
 
-            // --- LỌC TRÙNG TÊN (Deduplication) ---
             const uniqueMap = new Map();
             list.forEach(item => {
-                const key = sanitize(item.title); // Dùng tên file làm khóa
+                const key = sanitize(item.title);
                 if (!uniqueMap.has(key)) {
                     uniqueMap.set(key, item);
                 } else {
                     const existing = uniqueMap.get(key);
-                    // Nếu tập hiện tại là "Hooked" (vừa click xong) mà cái cũ không phải -> Ghi đè
-                    if (item.isHooked && !existing.isHooked) {
-                        uniqueMap.set(key, item);
-                    }
+                    if (item.isHooked && !existing.isHooked) uniqueMap.set(key, item);
                 }
             });
             const finalList = Array.from(uniqueMap.values());
-            
-            if (finalList.length < list.length) {
-                addLog(`Đã lọc bỏ ${list.length - finalList.length} tập trùng tên (Ưu tiên Hook).`, 'warn');
-            }
-
             const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
             let successCount = 0;
 
             await runBatch(finalList, 10, async (s) => {
-                let content = s.content; 
-
+                let content = s.content;
                 if (!content && s.lrcUrl) {
-                    try { content = await fetchFile(s.lrcUrl, 'text'); } catch (e) { console.warn(`URL Fail ${s.title}:`, e); }
+                    try { content = await fetchFile(s.lrcUrl, 'text'); } catch (e) {}
                 }
-
                 if (!content && s.id) {
-                    try { content = await fetchLrcViaApi(s.id); } catch (e) { console.warn(`API Fail ${s.title}:`, e); }
+                    try { content = await fetchLrcViaApi(s.id); } catch (e) {}
                 }
-
                 if (content) {
                     await w.add(`${sanitize(s.title)}.lrc`, new zip.TextReader(content));
                     successCount++;
                 } else {
-                    addLog(`Lỗi: ${s.title} (Ko lấy được nội dung)`, 'warn');
+                    addLog(`Lỗi: ${s.title} (Trống)`, 'warn');
                 }
             }, (done, total) => {
                 const percent = Math.floor((done/total)*100);
@@ -477,7 +521,7 @@
                 download(await w.close(), `${sanitize(currentDramaTitle)}_Subs.zip`);
                 addLog(`Đã tải ZIP: ${successCount}/${finalList.length} file!`, 'success');
             } else {
-                addLog("Thất bại toàn bộ: Không lấy được nội dung nào!", 'error');
+                addLog("Thất bại toàn bộ!", 'error');
                 await w.close();
             }
         };
@@ -500,6 +544,14 @@
             download(await w.close(), `${sanitize(currentDramaTitle)}_Images.zip`);
             addLog("Đã tải ZIP ảnh xong!", 'success');
         };
+
+        // Tự động quét sau 2 giây nếu chưa có dữ liệu
+        setTimeout(() => {
+            if (subtitleMap.size === 0) {
+                addLog('Tự động quét backup...', 'info');
+                scanPageData();
+            }
+        }, 2500);
     }
     initAudioSniffer();
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initUI); else initUI();
