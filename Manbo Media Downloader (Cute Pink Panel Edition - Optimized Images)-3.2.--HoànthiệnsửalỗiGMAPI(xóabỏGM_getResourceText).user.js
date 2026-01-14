@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Manbo Media Downloader (Silent Blob Fix Headers)
+// @name         Manbo Media Downloader (Fast Speed & Silent Headers)
 // @namespace    manbo.kilamanbo.media
-// @version      3.3.4 // Fix lỗi [object Object] bằng cách thêm Headers giả lập
-// @description  Tải phụ đề, ảnh, audio Manbo. Fix lỗi tải thất bại do server chặn request thiếu Header.
+// @version      3.3.5 // Tối ưu tốc độ tải (Multi-thread)
+// @description  Tải phụ đề, ảnh, audio Manbo. Fix lỗi tải chậm và server chặn request.
 // @author       Thien Truong Dia Cuu
 // @match        https://kilamanbo.com/manbo/pc/detail*
 // @match        https://manbo.kilakila.cn/manbo/pc/detail*
@@ -31,14 +31,11 @@
     let currentEpisodeLrcUrl = null;
     let currentEpisodeTitle = 'Tập hiện tại';
     let currentDramaTitle = 'Manbo Drama';
-
-    // Audio State
-    let realAudioUrl = null; // Link mp3 thật bắt được từ player
+    let realAudioUrl = null;
 
     // --- Modern CSS Styles ---
     GM_addStyle(`
         @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700&display=swap');
-
         #manbo-panel {
             position: fixed; top: 15%; right: 20px; width: 300px;
             background: rgba(255, 255, 255, 0.95);
@@ -52,17 +49,14 @@
             color: #444; display: flex; flex-direction: column; max-height: 85vh;
         }
         #manbo-panel.collapsed { transform: translateX(150%) !important; opacity: 0; pointer-events: none; }
-
         .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; cursor: move; user-select: none; padding-bottom: 8px; border-bottom: 1px solid rgba(0,0,0,0.05); }
         .panel-title { color: #ff4d94; font-weight: 800; font-size: 16px; display: flex; align-items: center; gap: 6px; }
         .close-btn { background: none; border: none; font-size: 18px; color: #aaa; cursor: pointer; }
         .close-btn:hover { color: #ff4d94; }
-
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; flex-shrink: 0; }
         .stat-card { background: rgba(255, 240, 245, 0.8); border-radius: 10px; padding: 8px; text-align: center; border: 1px solid rgba(255, 182, 193, 0.3); }
         .stat-num { display: block; font-size: 18px; font-weight: 700; color: #ff4d94; }
         .stat-label { font-size: 10px; color: #888; text-transform: uppercase; }
-
         .log-container { flex-grow: 1; min-height: 80px; max-height: 150px; background: #f9f9f9; border-radius: 8px; border: 1px solid #eee; padding: 8px; overflow-y: auto; margin-bottom: 12px; font-family: 'Consolas', monospace; font-size: 11px; display: flex; flex-direction: column; gap: 4px; }
         .log-entry { padding: 2px 0; border-bottom: 1px dashed #eee; }
         .log-time { color: #aaa; margin-right: 5px; }
@@ -71,11 +65,9 @@
         .log-warn { color: #f39c12; }
         .log-error { color: #e74c3c; }
         .log-audio { color: #9b59b6; font-weight: bold; }
-
         .controls-area { flex-shrink: 0; }
         .btn-group { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
         .section-title { font-size: 11px; font-weight: 700; color: #aaa; margin: 8px 0 4px 0; text-transform: uppercase; }
-
         .m-btn { border: none; border-radius: 8px; padding: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s; width: 100%; display: flex; justify-content: center; align-items: center; gap: 5px; }
         .btn-outline { background: #fff; border: 1px solid #ffb3c6; color: #ff5c8d; }
         .btn-outline:hover { background: #fff0f5; }
@@ -83,10 +75,8 @@
         .btn-fill:hover { transform: translateY(-1px); box-shadow: 0 6px 12px rgba(255, 77, 148, 0.3); }
         .btn-full { width: 100%; margin-bottom: 6px; }
         .btn-disabled { opacity: 0.6; cursor: not-allowed; filter: grayscale(1); }
-
         .log-container::-webkit-scrollbar { width: 4px; }
         .log-container::-webkit-scrollbar-thumb { background: #ffb3c6; border-radius: 2px; }
-
         #manbo-toggle { position: fixed; bottom: 30px; right: 30px; width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #ff7eb9, #ff4d94); color: white; border: none; cursor: pointer; z-index: 9998; font-size: 20px; box-shadow: 0 4px 15px rgba(255, 77, 148, 0.4); transition: transform 0.3s; }
         #manbo-toggle:hover { transform: scale(1.1) rotate(10deg); }
     `);
@@ -96,11 +86,9 @@
     // --- Helpers ---
     const sanitize = (n) => n.replace(/[\/\\?%*:|"<>]/g, '_').trim();
 
-    // Hàm Log: Cập nhật UI log
     function addLog(msg, type = 'info', updateLast = false) {
         const box = document.getElementById('log-box');
         if (!box) return;
-
         if (updateLast && box.firstElementChild) {
              const lastEntry = box.firstElementChild;
              const time = new Date().toLocaleTimeString('vi-VN', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
@@ -108,7 +96,6 @@
              lastEntry.innerHTML = `<span class="log-time">[${time}]</span><span class="${colorClass}">${msg}</span>`;
              return;
         }
-
         const div = document.createElement('div');
         div.className = 'log-entry';
         const time = new Date().toLocaleTimeString('vi-VN', { hour12: false, hour: '2-digit', minute:'2-digit', second:'2-digit' });
@@ -117,42 +104,18 @@
         box.prepend(div);
     }
 
-    // Hàm fetchFile: Thêm Headers giả lập để tránh bị chặn
     const fetchFile = (url, type = 'blob', onProgress) => new Promise((res, rej) => {
         if (!url) return rej("URL rỗng");
         GM_xmlhttpRequest({
-            method: "GET",
-            url,
-            headers: {
-                "Referer": window.location.href, // Giả mạo nguồn truy cập từ chính trang web
-                "Origin": window.location.origin
-            },
+            method: "GET", url,
+            headers: { "Referer": window.location.href, "Origin": window.location.origin },
             responseType: type,
-            onload: r => {
-                if (r.status === 200) {
-                    res(r.response);
-                } else {
-                    rej(`HTTP ${r.status}: ${r.statusText}`);
-                }
-            },
-            onerror: (err) => {
-                // Parse lỗi chi tiết thay vì [object Object]
-                let errorMsg = "Network Error";
-                if (err.statusText) errorMsg = err.statusText;
-                else if (err.error) errorMsg = err.error;
-                else try { errorMsg = JSON.stringify(err); } catch(e){}
-                rej(errorMsg);
-            },
-            onprogress: (e) => {
-                if (onProgress && e.total > 0) {
-                    const percent = Math.floor((e.loaded / e.total) * 100);
-                    onProgress(percent);
-                }
-            }
+            onload: r => (r.status === 200) ? res(r.response) : rej(`HTTP ${r.status}`),
+            onerror: (err) => rej(err.statusText || "Network Error"),
+            onprogress: (e) => { if (onProgress && e.total > 0) onProgress(Math.floor((e.loaded / e.total) * 100)); }
         });
     });
 
-    // Tải bằng Blob URL
     const download = (data, name) => {
         const a = document.createElement("a");
         a.download = name;
@@ -161,9 +124,7 @@
         document.body.appendChild(a);
         a.click();
         a.remove();
-        if (typeof data !== "string") {
-            setTimeout(() => URL.revokeObjectURL(a.href), 10000);
-        }
+        if (typeof data !== "string") setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     };
 
     function convertToAss(lrc) {
@@ -179,6 +140,25 @@
             }
         });
         return ass;
+    }
+
+    // --- Helper: Concurrency Limit (Tải đa luồng) ---
+    async function runBatch(items, limit, fn, onProgress) {
+        let results = [];
+        let executing = [];
+        let completed = 0;
+        for (const item of items) {
+            const p = Promise.resolve().then(() => fn(item));
+            results.push(p);
+            const e = p.then(() => {
+                executing.splice(executing.indexOf(e), 1);
+                completed++;
+                if (onProgress) onProgress(completed, items.length);
+            });
+            executing.push(e);
+            if (executing.length >= limit) await Promise.race(executing);
+        }
+        return Promise.all(results);
     }
 
     function updateCounters() {
@@ -201,7 +181,6 @@
         }
     }
 
-    // --- Audio Sniffer ---
     function initAudioSniffer() {
         window.addEventListener('play', (e) => {
             const target = e.target;
@@ -226,7 +205,6 @@
                 const json = JSON.parse(res.responseText);
                 const data = json?.data;
                 if (!data) return;
-
                 const main = data.radioDramaResp || (req.url.includes('dramaDetail') ? data : null);
                 if (main) {
                     currentDramaTitle = main.title || currentDramaTitle;
@@ -242,28 +220,19 @@
                     });
                     if (newSubCount > 0) addLog(`Quét: ${newSubCount} phụ đề mới.`, 'info');
                 }
-
                 if (req.url.includes('dramaSetDetail')) {
                     const title = data.setTitle || data.setName || 'Unknown';
                     currentEpisodeTitle = title;
                     currentEpisodeLrcUrl = data.setLrcUrl;
-
                     realAudioUrl = null;
                     updateAudioButton();
-
                     if (data.setIdStr && data.setLrcUrl) {
                         if (!subtitleMap.has(data.setIdStr) || !subtitleMap.get(data.setIdStr).lrcUrl) {
                             subtitleMap.set(data.setIdStr, { title: title, lrcUrl: data.setLrcUrl });
                             addLog(`Đã bắt data: ${title}`, 'success');
                         }
-                    } else {
-                        addLog(`Đang xem: ${title}`, 'info');
-                    }
-
-                    const addImg = (u) => {
-                        const cl = u.split('?')[0];
-                        if (!accumulatedImages.has(cl)) accumulatedImages.add(cl);
-                    };
+                    } else addLog(`Đang xem: ${title}`, 'info');
+                    const addImg = (u) => { const cl = u.split('?')[0]; if (!accumulatedImages.has(cl)) accumulatedImages.add(cl); };
                     if (data.setPic) addImg(data.setPic);
                     if (data.backgroundImgUrl) addImg(data.backgroundImgUrl);
                     (data.picUrlSet || []).forEach(u => addImg(u));
@@ -285,101 +254,77 @@
     // --- UI ---
     function initUI() {
         if (document.getElementById('manbo-panel')) return;
-
         const panel = document.createElement('div');
         panel.id = 'manbo-panel';
         panel.innerHTML = `
             <div class="panel-header" id="panel-header">
-                <div class="panel-title">📜 Manbo Log</div>
-                <button class="close-btn" id="hide-p">✖</button>
+                <div class="panel-title">📜 Manbo Log</div><button class="close-btn" id="hide-p">✖</button>
             </div>
-
             <div class="stats-grid">
-                <div class="stat-card">
-                    <span class="stat-num" id="stat-sub">0</span>
-                    <span class="stat-label">Phụ đề</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-num" id="stat-img">0</span>
-                    <span class="stat-label">Hình ảnh</span>
-                </div>
+                <div class="stat-card"><span class="stat-num" id="stat-sub">0</span><span class="stat-label">Phụ đề</span></div>
+                <div class="stat-card"><span class="stat-num" id="stat-img">0</span><span class="stat-label">Hình ảnh</span></div>
             </div>
-
             <div id="log-box" class="log-container">
-                <div class="log-entry"><span class="log-time">System</span><span class="log-info">Sẵn sàng! Hãy nhấn Play để bắt Audio.</span></div>
+                <div class="log-entry"><span class="log-time">System</span><span class="log-info">Sẵn sàng! Hãy nhấn play để bắt audio.</span></div>
             </div>
-
             <div class="controls-area">
                 <div class="section-title">Tập hiện tại</div>
                 <div class="btn-group">
                     <button class="m-btn btn-outline" id="dl-lrc">💬 LRC</button>
                     <button class="m-btn btn-outline" id="dl-ass">📝 ASS</button>
                 </div>
-                <button class="m-btn btn-outline btn-full btn-disabled" id="cp-audio">🎧 Bấm Play để bắt Audio</button>
-
+                <button class="m-btn btn-outline btn-full btn-disabled" id="cp-audio">🎧 Bấm play để bắt audio</button>
                 <div class="section-title">Tải toàn bộ (ZIP)</div>
-                <button class="m-btn btn-fill btn-full" id="zip-sub">📦 Tải tất cả Phụ đề</button>
-                <button class="m-btn btn-fill btn-full" id="zip-img">📸 Tải tất cả Ảnh</button>
+                <button class="m-btn btn-fill btn-full" id="zip-sub">📦 Tải tất cả phụ đề</button>
+                <button class="m-btn btn-fill btn-full" id="zip-img">📸 Tải tất cả ảnh</button>
             </div>
         `;
         document.body.appendChild(panel);
-
         const toggle = document.createElement('button');
         toggle.id = 'manbo-toggle'; toggle.innerHTML = '📜';
         toggle.onclick = () => panel.classList.toggle('collapsed');
         document.body.appendChild(toggle);
-
         makeDraggable(panel, document.getElementById('panel-header'));
         document.getElementById('hide-p').onclick = () => panel.classList.add('collapsed');
 
-        // Logic Actions
         document.getElementById('dl-lrc').onclick = async () => {
             if (!currentEpisodeLrcUrl) { addLog("Chưa có link LRC!", 'error'); return; }
-            addLog(`Đang tải LRC...`, 'info');
             download(await fetchFile(currentEpisodeLrcUrl), `${sanitize(currentEpisodeTitle)}.lrc`);
             addLog("Tải LRC xong!", 'success');
         };
 
         document.getElementById('dl-ass').onclick = async () => {
             if (!currentEpisodeLrcUrl) { addLog("Chưa có link LRC!", 'error'); return; }
-            addLog(`Đang convert ASS...`, 'info');
             download(new Blob([convertToAss(await fetchFile(currentEpisodeLrcUrl, 'text'))]), `${sanitize(currentEpisodeTitle)}.ass`);
-            addLog("Convert & Tải ASS xong!", 'success');
+            addLog("Tải ASS xong!", 'success');
         };
 
-        // Audio Handler - SILENT DOWNLOAD WITH HEADERS
         document.getElementById('cp-audio').onclick = () => {
-            if (!realAudioUrl) {
-                toast.fire("Chưa có link!", "Hãy bấm Play trên trình phát nhạc của web trước.", "warning");
-                return;
-            }
-
+            if (!realAudioUrl) { toast.fire("Chưa có link!", "Hãy bấm Play trước.", "warning"); return; }
             addLog(`Đang tải Audio: 0%`, 'info');
-
-            fetchFile(realAudioUrl, 'blob', (percent) => {
-                addLog(`Đang tải Audio: ${percent}%`, 'info', true);
-            })
-            .then(blob => {
-                addLog(`Đang lưu file xuống máy...`, 'success', true);
-                download(blob, `${sanitize(currentEpisodeTitle)}.mp3`);
-                addLog("Tải Audio thành công!", 'success');
-                toast.fire("Tải xong!", "", "success");
-            })
-            .catch((err) => {
-                // Log chi tiết lỗi đã stringify
-                addLog(`Lỗi tải: ${err}`, 'error');
-                console.error("Audio Download Error:", err);
-                GM_setClipboard(realAudioUrl);
-                addLog("Đã copy link dự phòng (Tải thất bại).", 'warn');
-            });
+            fetchFile(realAudioUrl, 'blob', (p) => addLog(`Đang tải Audio: ${p}%`, 'info', true))
+            .then(b => { addLog(`Đang lưu file...`, 'success', true); download(b, `${sanitize(currentEpisodeTitle)}.mp3`); addLog("Tải Audio thành công!", 'success'); })
+            .catch((e) => { addLog(`Lỗi: ${e}`, 'error'); GM_setClipboard(realAudioUrl); });
         };
 
+        // --- OPTIMIZED ZIP DOWNLOAD ---
         document.getElementById('zip-sub').onclick = async () => {
             const list = Array.from(subtitleMap.values()).filter(s => s.lrcUrl);
             if (!list.length) { addLog("Danh sách trống!", 'warn'); return; }
-            addLog(`Đang nén ${list.length} phụ đề...`, 'info');
+            addLog(`Đang tải ${list.length} phụ đề (Siêu tốc)...`, 'info');
             const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
-            for (let s of list) try { await w.add(`${sanitize(s.title)}.lrc`, new zip.TextReader(await fetchFile(s.lrcUrl, 'text'))); } catch(e){}
+
+            // Tải 20 file cùng lúc
+            await runBatch(list, 20, async (s) => {
+                try {
+                    const content = await fetchFile(s.lrcUrl, 'text');
+                    await w.add(`${sanitize(s.title)}.lrc`, new zip.TextReader(content));
+                } catch(e) { console.error(e); }
+            }, (done, total) => {
+                const percent = Math.floor((done/total)*100);
+                addLog(`Sub: ${done}/${total} (${percent}%)`, 'info', true);
+            });
+
             download(await w.close(), `${sanitize(currentDramaTitle)}_Subs.zip`);
             addLog("Đã tải ZIP phụ đề!", 'success');
         };
@@ -387,24 +332,27 @@
         document.getElementById('zip-img').onclick = async () => {
             const list = Array.from(accumulatedImages);
             if (!list.length) { addLog("Không có ảnh!", 'warn'); return; }
-            addLog(`Đang tải ${list.length} ảnh... (Đợi chút)`, 'info');
-
+            addLog(`Bắt đầu tải ${list.length} ảnh...`, 'info');
             const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
-            let count = 0;
-            for (let i=0; i<list.length; i++) {
+
+            // Tải 5 ảnh cùng lúc để tránh nghẽn mạng
+            await runBatch(list, 5, async (url) => {
                 try {
-                    await w.add(`img_${i+1}.jpg`, new zip.BlobReader(await fetchFile(list[i])));
-                    count++;
-                    if (count % 5 === 0) addLog(`Đang tải ảnh: ${Math.round(count/list.length*100)}%`, 'info', true);
+                    const blob = await fetchFile(url, 'blob');
+                    // Lấy tên file từ URL hoặc đặt tên ngẫu nhiên
+                    const fname = url.substring(url.lastIndexOf('/')+1).split('?')[0] || `img_${Math.random()}.jpg`;
+                    await w.add(fname, new zip.BlobReader(blob));
                 } catch(e) {}
-            }
+            }, (done, total) => {
+                const percent = Math.floor((done/total)*100);
+                 addLog(`Tiến độ: ${done}/${total} (${percent}%)`, 'info', true);
+            });
+
             download(await w.close(), `${sanitize(currentDramaTitle)}_Images.zip`);
-            addLog("Đã tải ZIP ảnh!", 'success');
+            addLog("Đã tải ZIP ảnh xong!", 'success');
         };
     }
 
     initAudioSniffer();
-
-    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initUI);
-    else initUI();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initUI); else initUI();
 })();
