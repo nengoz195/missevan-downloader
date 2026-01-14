@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Manbo Media Downloader (Fast Speed & Silent Headers)
 // @namespace    manbo.kilamanbo.media
-// @version      3.6.0 // Fix lỗi convert ASS (Hỗ trợ định dạng [HH:MM:SS.xx])
+// @version      3.9.0 // Fix bộ đếm: Chỉ nhảy số khi bắt được Link/Content
 // @description  Tải phụ đề, ảnh, audio Manbo. Fix lỗi tải chậm và server chặn request.
 // @author       Thien Truong Dia Cuu
 // @match        https://kilamanbo.com/manbo/pc/detail*
@@ -28,6 +28,7 @@
     'use strict';
 
     // --- State Management ---
+    // subtitleMap: key=id, value={ id, title, lrcUrl, content }
     let subtitleMap = new Map();
     let accumulatedImages = new Set();
     let currentEpisodeLrcUrl = null;
@@ -120,10 +121,15 @@
     });
 
     const fetchLrcViaApi = (id) => new Promise((res, rej) => {
+        const apiUrl = window.location.origin + "/Activecard/getLrcContent";
         GM_xmlhttpRequest({
             method: "POST",
-            url: "/Activecard/getLrcContent",
-            headers: { "Content-Type": "application/x-www-form-urlencoded", "Referer": window.location.href, "Origin": window.location.origin },
+            url: apiUrl,
+            headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Referer": window.location.href,
+                "Origin": window.location.origin
+            },
             data: "videoId=" + id,
             onload: (r) => {
                 if (r.status !== 200) return rej("API Error " + r.status);
@@ -151,14 +157,11 @@
         if (typeof data !== "string") setTimeout(() => URL.revokeObjectURL(a.href), 10000);
     };
 
-    // --- UNIVERSAL ASS CONVERTER (NEW) ---
+    // --- UNIVERSAL ASS CONVERTER ---
     function convertToAss(lrc) {
         let ass = `[Script Info]\nTitle: Manbo\nScriptType: v4.00+\nPlayResX:1280\nPlayResY:720\n\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,Arial,42,&H00FFFFFF,&H000000FF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,2,0,2,20,20,20,1\n\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
-
         let parsedLines = [];
         const lines = lrc.split('\n');
-
-        // Hàm helper để tạo chuỗi thời gian chuẩn ASS (H:MM:SS.cs) từ tổng số giây
         const formatAssTime = (totalSec) => {
             const h = Math.floor(totalSec / 3600);
             const m = Math.floor((totalSec % 3600) / 60);
@@ -166,59 +169,32 @@
             const cs = Math.floor((totalSec % 1) * 100);
             return `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}.${cs.toString().padStart(2, '0')}`;
         };
-
         lines.forEach(line => {
-            // Regex vạn năng: Bắt mọi thứ trong [] rồi xử lý sau
             const m = line.match(/\[([\d:.]+)\](.*)/);
             if (m) {
                 const timeStr = m[1];
                 const text = m[2].trim();
-
-                // Tách thời gian bằng dấu : hoặc .
-                // Ví dụ: 00:00:00.50 -> ["00", "00", "00", "50"] (4 phần)
-                // Ví dụ: 00:00.50    -> ["00", "00", "50"] (3 phần)
                 let parts = timeStr.split(/[:.]/);
-                let seconds = 0;
-                let ms = 0;
-
-                // Xử lý linh hoạt độ dài
+                let seconds = 0; let ms = 0;
                 if (parts.length === 4) {
-                    // HH:MM:SS.xx
                     seconds = parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(parts[2]);
-                    ms = parseInt(parts[3].padEnd(2, '0').substring(0, 2)); // Lấy 2 chữ số đầu của ms
+                    ms = parseInt(parts[3].padEnd(2, '0').substring(0, 2));
                 } else if (parts.length === 3) {
-                    // MM:SS.xx
                     seconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
                     ms = parseInt(parts[2].padEnd(2, '0').substring(0, 2));
-                } else {
-                    return; // Bỏ qua nếu định dạng lạ
-                }
-
+                } else return;
                 const rawTime = seconds + (ms / 100);
-                parsedLines.push({
-                    startTime: formatAssTime(rawTime),
-                    rawTime: rawTime,
-                    text: text
-                });
+                parsedLines.push({ startTime: formatAssTime(rawTime), rawTime: rawTime, text: text });
             }
         });
-
         parsedLines.sort((a, b) => a.rawTime - b.rawTime);
-
         parsedLines.forEach((item, i) => {
             if (item.text === '') return;
-
             let endTime;
-            if (i < parsedLines.length - 1) {
-                endTime = parsedLines[i + 1].startTime;
-            } else {
-                // Dòng cuối cộng 5s
-                endTime = formatAssTime(item.rawTime + 5);
-            }
-
+            if (i < parsedLines.length - 1) endTime = parsedLines[i + 1].startTime;
+            else endTime = formatAssTime(item.rawTime + 5);
             ass += `Dialogue: 0,${item.startTime},${endTime},Default,,0,0,0,,${item.text}\n`;
         });
-
         return ass;
     }
 
@@ -240,10 +216,12 @@
         return Promise.all(results);
     }
 
+    // --- FIX: Chỉ đếm những tập đã CÓ Link hoặc Content ---
     function updateCounters() {
         const subC = document.getElementById('stat-sub');
         const imgC = document.getElementById('stat-img');
-        if (subC) subC.innerText = Array.from(subtitleMap.values()).filter(s => s.lrcUrl || s.id).length;
+        // Filter bỏ những tập chỉ có ID (chưa hook được link/content)
+        if (subC) subC.innerText = Array.from(subtitleMap.values()).filter(s => s.lrcUrl || s.content).length;
         if (imgC) imgC.innerText = accumulatedImages.size;
     }
 
@@ -276,6 +254,7 @@
         }, true);
     }
 
+    // --- HOOKS: Cập nhật dữ liệu vào Map để dùng cho ZIP ---
     ajaxHooker.hook(req => {
         req.response = res => {
             if (!res.responseText) return;
@@ -291,8 +270,9 @@
                     let newSubCount = 0;
                     (main.setRespList || []).forEach(s => {
                         const id = s.setIdStr || s.setId;
+                        // Chỉ lưu nếu chưa có hoặc cập nhật thêm thông tin
                         if (!subtitleMap.has(id)) {
-                            subtitleMap.set(id, { id: id, title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl });
+                            subtitleMap.set(id, { id: id, title: s.setTitle || s.setName || 'Tập ' + s.setNo, lrcUrl: s.setLrcUrl, content: null });
                             if (s.setLrcUrl || id) newSubCount++;
                         }
                         if (s.setPic) accumulatedImages.add(s.setPic.split('?')[0]);
@@ -308,7 +288,16 @@
                     realAudioUrl = null;
                     updateAudioButton();
 
-                    if (data.setIdStr) subtitleMap.set(data.setIdStr, { id: data.setIdStr, title: title, lrcUrl: data.setLrcUrl });
+                    if (data.setIdStr) {
+                         const existing = subtitleMap.get(data.setIdStr) || {};
+                         // Cập nhật lại Map với Link mới nhất
+                         subtitleMap.set(data.setIdStr, {
+                             id: data.setIdStr,
+                             title: title,
+                             lrcUrl: data.setLrcUrl,
+                             content: existing.content // Giữ lại content nếu đã có
+                         });
+                    }
                     if (data.setLrcUrl) addLog(`Đã bắt URL: ${title}`, 'success');
 
                     const addImg = (u) => { if(u) { const cl = u.split('?')[0]; if (!accumulatedImages.has(cl)) accumulatedImages.add(cl); }};
@@ -318,10 +307,27 @@
                 }
 
                 if (req.url.includes('getLrcContent')) {
+                     // Parse ID từ Request payload để biết là tập nào
+                     let videoId = null;
+                     if (req.data) {
+                         const match = req.data.match(/videoId=([^&]+)/);
+                         if (match) videoId = match[1];
+                     }
+
                      if (data.lrcUrl) currentEpisodeLrcUrl = data.lrcUrl;
-                     else if (typeof data === 'string' || data.lrcContent) {
-                         currentEpisodeLrcContent = data.lrcContent || data;
+
+                     if (typeof data === 'string' || data.lrcContent) {
+                         const txt = data.lrcContent || data;
+                         currentEpisodeLrcContent = txt;
                          addLog('Đã bắt được NỘI DUNG LRC trực tiếp!', 'success');
+
+                         // CỰC KỲ QUAN TRỌNG: Lưu nội dung vào Map để ZIP dùng luôn
+                         if (videoId && subtitleMap.has(videoId)) {
+                             const item = subtitleMap.get(videoId);
+                             item.content = txt; // Lưu content
+                             subtitleMap.set(videoId, item);
+                             addLog(`-> Đã lưu nội dung cho tập: ${item.title}`, 'info');
+                         }
                      }
                 }
                 updateCounters();
@@ -359,7 +365,7 @@
                     <button class="m-btn btn-outline" id="dl-ass">📝 ASS</button>
                 </div>
                 <button class="m-btn btn-outline btn-full btn-disabled" id="cp-audio">🎧 Bấm play để bắt audio</button>
-                <div class="section-title">Tải toàn bộ (Dùng API + Hook)</div>
+                <div class="section-title">Tải toàn bộ (Ưu tiên Hook)</div>
                 <button class="m-btn btn-fill btn-full" id="zip-sub">📦 Tải tất cả phụ đề</button>
                 <button class="m-btn btn-fill btn-full" id="zip-img">📸 Tải tất cả ảnh</button>
             </div>
@@ -372,7 +378,6 @@
         makeDraggable(panel, document.getElementById('panel-header'));
         document.getElementById('hide-p').onclick = () => panel.classList.add('collapsed');
 
-        // --- DL LRC LẺ: HOOK ONLY ---
         document.getElementById('dl-lrc').onclick = async () => {
             try {
                 let content = currentEpisodeLrcContent;
@@ -387,7 +392,6 @@
             } catch (e) { addLog(`Lỗi: ${e}`, 'error'); }
         };
 
-        // --- DL ASS LẺ: HOOK ONLY (KHÔNG GỌI API) ---
         document.getElementById('dl-ass').onclick = async () => {
             try {
                 let content = currentEpisodeLrcContent;
@@ -411,30 +415,46 @@
             .catch((e) => { addLog(`Lỗi: ${e}`, 'error'); GM_setClipboard(realAudioUrl); });
         };
 
+        // --- CƠ CHẾ MỚI: Ưu tiên dữ liệu đã Hook (Click tay) trước ---
         document.getElementById('zip-sub').onclick = async () => {
             const list = Array.from(subtitleMap.values());
             if (!list.length) { addLog("Danh sách trống!", 'warn'); return; }
             addLog(`Đang tải ${list.length} phụ đề...`, 'info');
             const w = new zip.ZipWriter(new zip.BlobWriter("application/zip"));
 
+            let successCount = 0;
+
             await runBatch(list, 10, async (s) => {
-                let content = null;
-                // ZIP thì cần dùng API để quét hết
-                if (s.id) {
-                    try { content = await fetchLrcViaApi(s.id); } catch (e) { }
-                }
+                let content = s.content; // 1. Ưu tiên nội dung đã bắt được (lưu trong Map)
+
+                // 2. Nếu chưa có nội dung, thử dùng Link đã Hook được (Click tay nhưng chưa tải nội dung)
                 if (!content && s.lrcUrl) {
-                    try { content = await fetchFile(s.lrcUrl, 'text'); } catch (e) { console.warn(`Failed ${s.title}`, e); }
+                    try { content = await fetchFile(s.lrcUrl, 'text'); } catch (e) { console.warn(`URL Fail ${s.title}:`, e); }
                 }
+
+                // 3. Nếu vẫn chưa có gì (Chưa click vào bao giờ), mới dùng API (Fallback)
+                if (!content && s.id) {
+                    try { content = await fetchLrcViaApi(s.id); } catch (e) { console.warn(`API Fail ${s.title}:`, e); }
+                }
+
                 if (content) {
                     await w.add(`${sanitize(s.title)}.lrc`, new zip.TextReader(content));
+                    successCount++;
+                } else {
+                    addLog(`Lỗi: ${s.title} (Ko lấy được nội dung)`, 'warn');
                 }
             }, (done, total) => {
                 const percent = Math.floor((done/total)*100);
                 addLog(`Sub: ${done}/${total} (${percent}%)`, 'info', true);
             });
-            download(await w.close(), `${sanitize(currentDramaTitle)}_Subs.zip`);
-            addLog("Đã tải ZIP phụ đề!", 'success');
+
+            if (successCount > 0) {
+                download(await w.close(), `${sanitize(currentDramaTitle)}_Subs.zip`);
+                addLog(`Đã tải ZIP: ${successCount}/${list.length} file!`, 'success');
+            } else {
+                addLog("Thất bại toàn bộ: Không lấy được nội dung nào!", 'error');
+                await w.close();
+            }
         };
 
         document.getElementById('zip-img').onclick = async () => {
